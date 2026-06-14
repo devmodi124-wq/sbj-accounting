@@ -1,0 +1,1038 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Khata — Prototype</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper: #FBF8F2;
+    --paper-alt: #F4EFE5;
+    --ink: #1C1B19;
+    --ink-soft: #6B6459;
+    --hairline: #DDD5C6;
+    --copper: #A8714A;
+    --copper-soft: #E9DCCC;
+    --green: #2F5D4E;
+    --green-soft: #E3ECE8;
+    --red: #9B3B3B;
+    --red-soft: #F3E2E0;
+    --radius: 6px;
+    --shadow: 0 1px 2px rgba(28,27,25,0.06);
+  }
+
+  * { box-sizing: border-box; }
+  html { -webkit-font-smoothing: antialiased; }
+
+  body {
+    margin: 0;
+    font-family: 'IBM Plex Sans', sans-serif;
+    background: var(--paper);
+    color: var(--ink);
+    font-size: 14px;
+    line-height: 1.5;
+  }
+
+  h1, h2, h3 { font-family: 'Source Serif 4', serif; font-weight: 600; margin: 0; }
+
+  .num { font-variant-numeric: tabular-nums; }
+
+  /* ===== Layout ===== */
+  .app {
+    display: grid;
+    grid-template-columns: 220px 1fr;
+    min-height: 100vh;
+  }
+
+  .sidebar {
+    background: var(--ink);
+    color: var(--paper);
+    padding: 24px 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .brand {
+    padding: 0 20px 24px;
+    border-bottom: 1px solid rgba(251,248,242,0.12);
+    margin-bottom: 16px;
+  }
+  .brand .mark {
+    font-family: 'Source Serif 4', serif;
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+  }
+  .brand .sub {
+    font-size: 11px;
+    color: #BFB6A8;
+    margin-top: 4px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .nav-section {
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: #8B8377;
+    padding: 16px 20px 6px;
+  }
+
+  .nav-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 20px;
+    color: #E4DDD1;
+    text-decoration: none;
+    font-size: 13.5px;
+    cursor: pointer;
+    border-left: 3px solid transparent;
+    transition: background 0.12s;
+  }
+  .nav-item:hover { background: rgba(251,248,242,0.05); }
+  .nav-item.active {
+    background: rgba(168,113,74,0.18);
+    border-left-color: var(--copper);
+    color: #fff;
+    font-weight: 500;
+  }
+  .nav-item .icon { width: 16px; text-align: center; opacity: 0.85; font-size: 14px; }
+
+  .sidebar-footer {
+    margin-top: auto;
+    padding: 16px 20px;
+    border-top: 1px solid rgba(251,248,242,0.12);
+    font-size: 12px;
+    color: #8B8377;
+  }
+  .user-chip {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+  .user-avatar {
+    width: 26px; height: 26px; border-radius: 50%;
+    background: var(--copper);
+    color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 600; font-size: 12px;
+    font-family: 'Source Serif 4', serif;
+  }
+  .user-name { color: #E4DDD1; font-size: 12.5px; font-weight: 500; }
+  .user-role { font-size: 10.5px; color: #8B8377; }
+
+  /* ===== Main ===== */
+  .main {
+    padding: 28px 36px 60px;
+    max-width: 1280px;
+  }
+
+  .topbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 24px;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .topbar h1 { font-size: 24px; }
+  .topbar .meta { color: var(--ink-soft); font-size: 12.5px; margin-top: 4px; }
+
+  .view { display: none; }
+  .view.active { display: block; }
+
+  /* ===== Buttons ===== */
+  .btn {
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    padding: 8px 16px;
+    border-radius: var(--radius);
+    border: 1px solid var(--hairline);
+    background: #fff;
+    color: var(--ink);
+    cursor: pointer;
+    transition: all 0.12s;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .btn:hover { border-color: var(--copper); color: var(--copper); }
+  .btn-primary {
+    background: var(--ink);
+    color: var(--paper);
+    border-color: var(--ink);
+  }
+  .btn-primary:hover { background: var(--copper); border-color: var(--copper); color: #fff; }
+  .btn-sm { padding: 5px 10px; font-size: 12px; }
+
+  /* ===== Cards ===== */
+  .card {
+    background: #fff;
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+  }
+  .card + .card { margin-top: 18px; }
+  .card-header {
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--hairline);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .card-header h2 { font-size: 15px; }
+  .card-body { padding: 18px; }
+
+  /* ===== Stat cards (dashboard) ===== */
+  .stat-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 14px;
+    margin-bottom: 18px;
+  }
+  .stat-card {
+    background: #fff;
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius);
+    padding: 16px 18px;
+    box-shadow: var(--shadow);
+  }
+  .stat-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--ink-soft);
+    margin-bottom: 8px;
+  }
+  .stat-value {
+    font-family: 'Source Serif 4', serif;
+    font-size: 26px;
+    font-weight: 700;
+  }
+  .stat-value.positive { color: var(--green); }
+  .stat-value.negative { color: var(--red); }
+  .stat-sub { font-size: 12px; color: var(--ink-soft); margin-top: 4px; }
+  .stat-sub .delta-up { color: var(--green); font-weight: 600; }
+  .stat-sub .delta-down { color: var(--red); font-weight: 600; }
+
+  .grid-2 {
+    display: grid;
+    grid-template-columns: 1.4fr 1fr;
+    gap: 18px;
+  }
+
+  /* ===== Tables ===== */
+  table { width: 100%; border-collapse: collapse; }
+  th, td {
+    text-align: left;
+    padding: 9px 14px;
+    border-bottom: 1px solid var(--hairline);
+    font-size: 13px;
+    white-space: nowrap;
+  }
+  th {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--ink-soft);
+    font-weight: 600;
+    background: var(--paper-alt);
+    position: sticky;
+    top: 0;
+  }
+  th.sortable { cursor: pointer; user-select: none; }
+  th.sortable:hover { color: var(--copper); }
+  th .sort-arrow { font-size: 10px; opacity: 0.5; margin-left: 4px; }
+  tbody tr:hover { background: var(--paper-alt); }
+  td.amount { text-align: right; font-variant-numeric: tabular-nums; }
+  td.amount.positive { color: var(--green); font-weight: 600; }
+  td.amount.negative { color: var(--red); font-weight: 600; }
+
+  .table-scroll { overflow-x: auto; }
+
+  /* ===== Filter bar ===== */
+  .filter-bar {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    align-items: center;
+    margin-bottom: 14px;
+  }
+  .filter-bar input, .filter-bar select {
+    font-family: inherit;
+    font-size: 13px;
+    padding: 7px 10px;
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius);
+    background: #fff;
+    color: var(--ink);
+  }
+  .filter-bar input[type="search"] {
+    min-width: 220px;
+  }
+  .filter-bar input:focus, .filter-bar select:focus, input:focus, select:focus, button:focus-visible {
+    outline: 2px solid var(--copper);
+    outline-offset: 1px;
+  }
+  .filter-spacer { flex: 1; }
+
+  /* ===== Pills / badges ===== */
+  .pill {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 9px;
+    border-radius: 100px;
+    letter-spacing: 0.02em;
+  }
+  .pill-green { background: var(--green-soft); color: var(--green); }
+  .pill-red { background: var(--red-soft); color: var(--red); }
+  .pill-copper { background: var(--copper-soft); color: var(--copper); }
+  .pill-muted { background: var(--paper-alt); color: var(--ink-soft); }
+
+  /* ===== Order entry form ===== */
+  .form-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 14px;
+    margin-bottom: 18px;
+  }
+  .form-grid.cols-2 { grid-template-columns: repeat(2, 1fr); }
+  .field label {
+    display: block;
+    font-size: 11.5px;
+    font-weight: 600;
+    color: var(--ink-soft);
+    margin-bottom: 5px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .field input, .field select {
+    width: 100%;
+    font-family: inherit;
+    font-size: 13.5px;
+    padding: 9px 11px;
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius);
+    background: #fff;
+    color: var(--ink);
+  }
+  .field .hint { font-size: 11.5px; color: var(--ink-soft); margin-top: 4px; }
+
+  .customer-search-wrap { position: relative; }
+  .customer-dropdown {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0; right: 0;
+    background: #fff;
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius);
+    box-shadow: 0 4px 16px rgba(28,27,25,0.12);
+    z-index: 10;
+    max-height: 220px;
+    overflow-y: auto;
+  }
+  .customer-dropdown .opt {
+    padding: 9px 12px;
+    cursor: pointer;
+    font-size: 13px;
+    border-bottom: 1px solid var(--hairline);
+  }
+  .customer-dropdown .opt:last-child { border-bottom: none; }
+  .customer-dropdown .opt:hover { background: var(--paper-alt); }
+  .customer-dropdown .opt .phone { color: var(--ink-soft); font-size: 11.5px; margin-left: 6px; }
+  .customer-dropdown .opt-new {
+    padding: 9px 12px;
+    cursor: pointer;
+    font-size: 13px;
+    color: var(--copper);
+    font-weight: 600;
+    background: var(--copper-soft);
+  }
+
+  /* ===== Component rows ===== */
+  .component-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 12px;
+  }
+  .component-table th {
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--ink-soft);
+    font-weight: 600;
+    padding: 8px 8px;
+    background: var(--paper-alt);
+    text-align: left;
+    position: static;
+  }
+  .component-table td {
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--hairline);
+    white-space: nowrap;
+  }
+  .component-table input, .component-table select {
+    width: 100%;
+    font-family: inherit;
+    font-size: 13px;
+    padding: 7px 8px;
+    border: 1px solid var(--hairline);
+    border-radius: 4px;
+    background: #fff;
+  }
+  .component-table input.amount-input { text-align: right; font-variant-numeric: tabular-nums; }
+  .component-table .col-type { width: 130px; }
+  .component-table .col-num { width: 90px; }
+  .component-table .col-remove { width: 36px; text-align: center; }
+  .remove-row-btn {
+    background: none;
+    border: none;
+    color: var(--red);
+    cursor: pointer;
+    font-size: 16px;
+    line-height: 1;
+    padding: 4px;
+  }
+  .remove-row-btn:hover { opacity: 0.7; }
+
+  .add-row-btn {
+    border: 1px dashed var(--hairline);
+    background: var(--paper-alt);
+    color: var(--ink-soft);
+    width: 100%;
+    padding: 9px;
+    border-radius: var(--radius);
+    font-family: inherit;
+    font-size: 12.5px;
+    font-weight: 500;
+    cursor: pointer;
+    margin-bottom: 18px;
+  }
+  .add-row-btn:hover { border-color: var(--copper); color: var(--copper); }
+
+  /* ===== Totals box ===== */
+  .totals-box {
+    background: var(--paper-alt);
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius);
+    padding: 16px 18px;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    align-items: end;
+  }
+  .totals-box .field label { color: var(--ink-soft); }
+  .totals-box .total-display {
+    font-family: 'Source Serif 4', serif;
+    font-size: 22px;
+    font-weight: 700;
+  }
+  .totals-box .total-display.balance { color: var(--red); }
+  .totals-box .total-display.balance.zero { color: var(--green); }
+
+  .form-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 18px;
+    padding-top: 18px;
+    border-top: 1px solid var(--hairline);
+  }
+
+  .form-section-title {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--ink-soft);
+    font-weight: 600;
+    margin: 22px 0 10px;
+  }
+  .form-section-title:first-child { margin-top: 0; }
+
+  /* ===== Sparkline placeholder chart ===== */
+  .chart-placeholder {
+    height: 220px;
+    display: flex;
+    align-items: flex-end;
+    gap: 6px;
+    padding: 0 4px;
+  }
+  .chart-bar {
+    flex: 1;
+    background: var(--copper-soft);
+    border-radius: 3px 3px 0 0;
+    position: relative;
+    transition: background 0.15s;
+  }
+  .chart-bar:hover { background: var(--copper); }
+  .chart-bar.current { background: var(--copper); }
+  .chart-labels {
+    display: flex;
+    gap: 6px;
+    padding: 8px 4px 0;
+    font-size: 10.5px;
+    color: var(--ink-soft);
+  }
+  .chart-labels span { flex: 1; text-align: center; }
+
+  /* ===== Pagination ===== */
+  .pagination {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 18px;
+    border-top: 1px solid var(--hairline);
+    font-size: 12.5px;
+    color: var(--ink-soft);
+  }
+  .pagination .pages { display: flex; gap: 4px; }
+  .pagination .page-btn {
+    width: 28px; height: 28px;
+    border: 1px solid var(--hairline);
+    background: #fff;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .pagination .page-btn.active { background: var(--ink); color: #fff; border-color: var(--ink); }
+
+  /* ===== Legend dot ===== */
+  .legend { display: flex; gap: 16px; font-size: 12px; color: var(--ink-soft); margin-top: 10px; }
+  .legend .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; }
+  .dot-green { background: var(--green); }
+  .dot-red { background: var(--red); }
+  .dot-copper { background: var(--copper); }
+
+  .proto-banner {
+    background: var(--ink);
+    color: var(--paper);
+    text-align: center;
+    font-size: 12px;
+    padding: 7px;
+    letter-spacing: 0.04em;
+  }
+  .proto-banner b { color: var(--copper-soft); }
+</style>
+</head>
+<body>
+
+<div class="proto-banner">PROTOTYPE — for layout &amp; flow review only · sample data shown · <b>not connected to a database</b></div>
+
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="mark">Khata</div>
+      <div class="sub">Sahibabad Jewellers</div>
+    </div>
+
+    <div class="nav-section">Work</div>
+    <a class="nav-item active" data-view="entry"><span class="icon">✎</span> New Order</a>
+    <a class="nav-item" data-view="dashboard"><span class="icon">▦</span> Dashboard</a>
+
+    <div class="nav-section">Reports</div>
+    <a class="nav-item" data-view="debtors"><span class="icon">₍₎</span> Debtors</a>
+    <a class="nav-item"><span class="icon">⊙</span> Sales</a>
+    <a class="nav-item"><span class="icon">⊟</span> Order / Stock</a>
+    <a class="nav-item"><span class="icon">⊞</span> Creditors</a>
+    <a class="nav-item"><span class="icon">⊠</span> Purchases</a>
+    <a class="nav-item"><span class="icon">☷</span> Customers</a>
+    <a class="nav-item"><span class="icon">≡</span> Ledgers</a>
+
+    <div class="nav-section">System</div>
+    <a class="nav-item"><span class="icon">⚙</span> Settings</a>
+
+    <div class="sidebar-footer">
+      <div class="user-chip">
+        <div class="user-avatar">R</div>
+        <div>
+          <div class="user-name">Ramesh</div>
+          <div class="user-role">Employee</div>
+        </div>
+      </div>
+      Working offline · all data on this device
+    </div>
+  </aside>
+
+  <main class="main">
+
+    <!-- ============ VIEW 1: ORDER ENTRY ============ -->
+    <div class="view active" id="view-entry">
+      <div class="topbar">
+        <div>
+          <h1>New Order</h1>
+          <div class="meta">Record a sale or a custom order for delivery</div>
+        </div>
+        <div>
+          <span class="pill pill-muted">Draft — not saved</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-body">
+
+          <div class="form-section-title">Customer &amp; order details</div>
+          <div class="form-grid">
+            <div class="field" style="grid-column: span 2;">
+              <label>Customer</label>
+              <div class="customer-search-wrap">
+                <input type="text" id="customerSearch" placeholder="Type a name to search…" value="Malti Ji" autocomplete="off">
+                <div class="customer-dropdown" id="customerDropdown" style="display:none;">
+                  <div class="opt">Malti Devi <span class="phone">98XXXXXX21</span></div>
+                  <div class="opt">Malti Sharma <span class="phone">99XXXXXX04</span></div>
+                  <div class="opt-new">+ Add new customer "Malti Ji"</div>
+                </div>
+              </div>
+              <div class="hint">Start typing to find an existing customer, or add a new one</div>
+            </div>
+            <div class="field">
+              <label>Order Date</label>
+              <input type="date" value="2026-06-14">
+            </div>
+            <div class="field">
+              <label>Status</label>
+              <select>
+                <option>Pending (in progress)</option>
+                <option selected>Delivered</option>
+              </select>
+            </div>
+
+            <div class="field">
+              <label>Item Name</label>
+              <input type="text" placeholder="e.g. Ring, Necklace, Bangle" value="Ring">
+            </div>
+            <div class="field">
+              <label>Order Code (optional)</label>
+              <input type="text" placeholder="e.g. RND-2026-014">
+            </div>
+            <div class="field" style="grid-column: span 2;">
+              <label>Notes / Reference</label>
+              <input type="text" placeholder="e.g. Via Amit Jain, repeat customer">
+            </div>
+          </div>
+
+          <div class="form-section-title">Item components</div>
+          <table class="component-table">
+            <thead>
+              <tr>
+                <th class="col-type">Component</th>
+                <th class="col-num">Pieces</th>
+                <th class="col-num">Weight (g)</th>
+                <th class="col-num">Purity</th>
+                <th class="col-num">Rate (₹)</th>
+                <th>Price (₹)</th>
+                <th class="col-remove"></th>
+              </tr>
+            </thead>
+            <tbody id="componentRows">
+              <tr>
+                <td>
+                  <select>
+                    <option>Round (RND)</option>
+                    <option>Stone</option>
+                    <option>Marquise (MRQ)</option>
+                    <option>Moti (Pearl)</option>
+                    <option>Chowk (CHK)</option>
+                    <option>Labour</option>
+                  </select>
+                </td>
+                <td><input type="text" value=""></td>
+                <td><input type="text" class="amount-input" value="4.055"></td>
+                <td>
+                  <select>
+                    <option>18 KT</option>
+                    <option selected>14 KT</option>
+                    <option>22 KT</option>
+                    <option>916</option>
+                    <option>Silver</option>
+                  </select>
+                </td>
+                <td><input type="text" class="amount-input" value="9,900"></td>
+                <td><input type="text" class="amount-input" value="35,430"></td>
+                <td class="col-remove"><button class="remove-row-btn" title="Remove component">×</button></td>
+              </tr>
+              <tr>
+                <td>
+                  <select>
+                    <option>Round (RND)</option>
+                    <option selected>Stone</option>
+                    <option>Marquise (MRQ)</option>
+                    <option>Moti (Pearl)</option>
+                    <option>Chowk (CHK)</option>
+                    <option>Labour</option>
+                  </select>
+                </td>
+                <td><input type="text" value="2"></td>
+                <td><input type="text" class="amount-input" value="2.23"></td>
+                <td>
+                  <select>
+                    <option>—</option>
+                  </select>
+                </td>
+                <td><input type="text" class="amount-input" value="2,000"></td>
+                <td><input type="text" class="amount-input" value="4,460"></td>
+                <td class="col-remove"><button class="remove-row-btn" title="Remove component">×</button></td>
+              </tr>
+              <tr>
+                <td>
+                  <select>
+                    <option>Round (RND)</option>
+                    <option>Stone</option>
+                    <option>Marquise (MRQ)</option>
+                    <option>Moti (Pearl)</option>
+                    <option>Chowk (CHK)</option>
+                    <option selected>Labour</option>
+                  </select>
+                </td>
+                <td><input type="text" value="—"></td>
+                <td><input type="text" class="amount-input" value="—"></td>
+                <td>
+                  <select>
+                    <option>—</option>
+                  </select>
+                </td>
+                <td><input type="text" class="amount-input" value="—"></td>
+                <td><input type="text" class="amount-input" value="5,440"></td>
+                <td class="col-remove"><button class="remove-row-btn" title="Remove component">×</button></td>
+              </tr>
+            </tbody>
+          </table>
+          <button class="add-row-btn">+ Add component</button>
+
+          <div class="form-section-title">Payment</div>
+          <div class="totals-box">
+            <div class="field">
+              <label>Total amount</label>
+              <div class="total-display num">₹ 45,330</div>
+            </div>
+            <div class="field">
+              <label>Payment received</label>
+              <input type="text" class="num" value="45,330">
+            </div>
+            <div class="field">
+              <label>Balance due</label>
+              <div class="total-display balance zero num">₹ 0</div>
+            </div>
+            <div class="field">
+              <label>Payment mode</label>
+              <select>
+                <option>Cash</option>
+                <option>UPI</option>
+                <option>Bank Transfer</option>
+                <option>Old gold exchange</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-actions">
+            <button class="btn">Cancel</button>
+            <button class="btn">Save as Draft</button>
+            <button class="btn btn-primary">Save Order</button>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ VIEW 2: DASHBOARD ============ -->
+    <div class="view" id="view-dashboard">
+      <div class="topbar">
+        <div>
+          <h1>Dashboard</h1>
+          <div class="meta">Sunday, 14 June 2026 · Showing: This Month</div>
+        </div>
+        <div class="filter-bar" style="margin-bottom:0;">
+          <select>
+            <option>Today</option>
+            <option selected>This Month</option>
+            <option>This Quarter</option>
+            <option>This Year</option>
+            <option>Custom range</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="stat-grid">
+        <div class="stat-card">
+          <div class="stat-label">Sales (this month)</div>
+          <div class="stat-value num">₹ 8,42,600</div>
+          <div class="stat-sub"><span class="delta-up">▲ 12%</span> vs last month</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Outstanding receivables</div>
+          <div class="stat-value negative num">₹ 3,18,940</div>
+          <div class="stat-sub">across 14 customers</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Outstanding payables</div>
+          <div class="stat-value num">₹ 1,07,000</div>
+          <div class="stat-sub">across 4 suppliers</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Cash in hand</div>
+          <div class="stat-value positive num">₹ 6,29,400</div>
+          <div class="stat-sub">as of today</div>
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-header">
+            <h2>Sales trend</h2>
+            <span class="pill pill-muted">Last 12 months</span>
+          </div>
+          <div class="card-body">
+            <div class="chart-placeholder">
+              <div class="chart-bar" style="height:42%;"></div>
+              <div class="chart-bar" style="height:58%;"></div>
+              <div class="chart-bar" style="height:50%;"></div>
+              <div class="chart-bar" style="height:71%;"></div>
+              <div class="chart-bar" style="height:64%;"></div>
+              <div class="chart-bar" style="height:80%;"></div>
+              <div class="chart-bar" style="height:55%;"></div>
+              <div class="chart-bar" style="height:62%;"></div>
+              <div class="chart-bar" style="height:48%;"></div>
+              <div class="chart-bar" style="height:67%;"></div>
+              <div class="chart-bar" style="height:74%;"></div>
+              <div class="chart-bar current" style="height:90%;"></div>
+            </div>
+            <div class="chart-labels">
+              <span>Jul</span><span>Aug</span><span>Sep</span><span>Oct</span><span>Nov</span><span>Dec</span>
+              <span>Jan</span><span>Feb</span><span>Mar</span><span>Apr</span><span>May</span><span>Jun</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <h2>Pending orders</h2>
+            <span class="pill pill-copper">7 in progress</span>
+          </div>
+          <div class="card-body" style="padding:0;">
+            <table>
+              <thead><tr><th>Customer</th><th>Item</th><th>Order date</th></tr></thead>
+              <tbody>
+                <tr><td>Menakshi</td><td>Ring</td><td>03 Jun</td></tr>
+                <tr><td>Ritika Kansal</td><td>Earrings (MRQ)</td><td>05 Jun</td></tr>
+                <tr><td>Sunita Bindal</td><td>Bangle</td><td>08 Jun</td></tr>
+                <tr><td>Devanshu</td><td>Chain</td><td>10 Jun</td></tr>
+                <tr><td>Akshar</td><td>Pendant set</td><td>12 Jun</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid-2" style="margin-top:18px;">
+        <div class="card">
+          <div class="card-header">
+            <h2>Top customers (this month)</h2>
+          </div>
+          <div class="card-body" style="padding:0;">
+            <table>
+              <thead><tr><th>Customer</th><th class="num" style="text-align:right;">Total billed</th><th class="num" style="text-align:right;">Balance</th></tr></thead>
+              <tbody>
+                <tr><td>Malti Ji</td><td class="amount num">₹ 45,330</td><td class="amount num">₹ 0</td></tr>
+                <tr><td>Sunita Bindal</td><td class="amount num">₹ 41,608</td><td class="amount negative num">₹ 6,620</td></tr>
+                <tr><td>Devanshu</td><td class="amount num">₹ 30,920</td><td class="amount negative num">₹ 30,920</td></tr>
+                <tr><td>Ritika Kansal</td><td class="amount num">₹ 18,200</td><td class="amount num">₹ 0</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <h2>Sales by component type</h2>
+          </div>
+          <div class="card-body">
+            <table>
+              <tbody>
+                <tr><td>Round (RND)</td><td class="amount num" style="text-align:right;">₹ 4,12,300</td></tr>
+                <tr><td>Stone</td><td class="amount num" style="text-align:right;">₹ 1,84,600</td></tr>
+                <tr><td>Labour</td><td class="amount num" style="text-align:right;">₹ 1,02,400</td></tr>
+                <tr><td>Marquise (MRQ)</td><td class="amount num" style="text-align:right;">₹ 88,200</td></tr>
+                <tr><td>Moti (Pearl)</td><td class="amount num" style="text-align:right;">₹ 55,100</td></tr>
+              </tbody>
+            </table>
+            <div class="legend">
+              <span><span class="dot dot-green"></span>Received</span>
+              <span><span class="dot dot-red"></span>Outstanding</span>
+              <span><span class="dot dot-copper"></span>Pending orders</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ============ VIEW 3: DEBTORS REPORT ============ -->
+    <div class="view" id="view-debtors">
+      <div class="topbar">
+        <div>
+          <h1>Debtors Report</h1>
+          <div class="meta">Customers with an outstanding balance</div>
+        </div>
+        <div>
+          <button class="btn">⤓ Export</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-body">
+          <div class="filter-bar">
+            <input type="search" placeholder="Search customer name or phone…">
+            <select>
+              <option>All ageing</option>
+              <option>0–30 days</option>
+              <option>31–60 days</option>
+              <option>61–90 days</option>
+              <option>90+ days</option>
+            </select>
+            <select>
+              <option>Sort: Highest balance</option>
+              <option>Sort: Oldest first</option>
+              <option>Sort: Name A–Z</option>
+            </select>
+            <div class="filter-spacer"></div>
+            <span class="pill pill-red">Total outstanding: ₹ 3,18,940</span>
+          </div>
+
+          <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th class="sortable">Customer <span class="sort-arrow">▾</span></th>
+                <th>Phone</th>
+                <th style="text-align:right;">Total billed</th>
+                <th style="text-align:right;">Received</th>
+                <th class="sortable" style="text-align:right;">Balance <span class="sort-arrow">▾</span></th>
+                <th class="sortable">Last txn <span class="sort-arrow">▾</span></th>
+                <th>Ageing</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Devanshu</td>
+                <td>98XXXXXX02</td>
+                <td class="amount num">₹ 30,920</td>
+                <td class="amount num">₹ 0</td>
+                <td class="amount negative num">₹ 30,920</td>
+                <td>12 Jun 2026</td>
+                <td><span class="pill pill-green">0–30d</span></td>
+                <td><button class="btn btn-sm">Ledger</button></td>
+              </tr>
+              <tr>
+                <td>Sunita Bindal</td>
+                <td>97XXXXXX18</td>
+                <td class="amount num">₹ 41,608</td>
+                <td class="amount num">₹ 34,988</td>
+                <td class="amount negative num">₹ 6,620</td>
+                <td>02 Jun 2026</td>
+                <td><span class="pill pill-green">0–30d</span></td>
+                <td><button class="btn btn-sm">Ledger</button></td>
+              </tr>
+              <tr>
+                <td>Akshar Mehta</td>
+                <td>99XXXXXX55</td>
+                <td class="amount num">₹ 1,25,000</td>
+                <td class="amount num">₹ 80,000</td>
+                <td class="amount negative num">₹ 45,000</td>
+                <td>18 May 2026</td>
+                <td><span class="pill pill-copper">31–60d</span></td>
+                <td><button class="btn btn-sm">Ledger</button></td>
+              </tr>
+              <tr>
+                <td>Mannu (Jaipur)</td>
+                <td>96XXXXXX73</td>
+                <td class="amount num">₹ 2,10,000</td>
+                <td class="amount num">₹ 1,07,000</td>
+                <td class="amount negative num">₹ 1,03,000</td>
+                <td>29 Apr 2026</td>
+                <td><span class="pill pill-copper">31–60d</span></td>
+                <td><button class="btn btn-sm">Ledger</button></td>
+              </tr>
+              <tr>
+                <td>Ritika Kansal</td>
+                <td>94XXXXXX40</td>
+                <td class="amount num">₹ 6,688</td>
+                <td class="amount num">₹ 6,688</td>
+                <td class="amount num">₹ 0</td>
+                <td>16 Apr 2026</td>
+                <td><span class="pill pill-muted">—</span></td>
+                <td><button class="btn btn-sm">Ledger</button></td>
+              </tr>
+              <tr>
+                <td>Menakshi</td>
+                <td>93XXXXXX29</td>
+                <td class="amount num">₹ 7,484</td>
+                <td class="amount num">₹ 0</td>
+                <td class="amount negative num">₹ 7,484</td>
+                <td>02 Feb 2026</td>
+                <td><span class="pill pill-red">90+d</span></td>
+                <td><button class="btn btn-sm">Ledger</button></td>
+              </tr>
+              <tr>
+                <td>Prashant Verma</td>
+                <td>92XXXXXX87</td>
+                <td class="amount num">₹ 1,26,536</td>
+                <td class="amount num">₹ 0</td>
+                <td class="amount negative num">₹ 1,26,536</td>
+                <td>11 Jan 2026</td>
+                <td><span class="pill pill-red">90+d</span></td>
+                <td><button class="btn btn-sm">Ledger</button></td>
+              </tr>
+            </tbody>
+          </table>
+          </div>
+
+          <div class="pagination">
+            <span>Showing 1–7 of 14 customers</span>
+            <div class="pages">
+              <button class="page-btn active">1</button>
+              <button class="page-btn">2</button>
+              <button class="page-btn">›</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<script>
+  document.querySelectorAll('.nav-item[data-view]').forEach(item => {
+    item.addEventListener('click', () => {
+      document.querySelectorAll('.nav-item[data-view]').forEach(i => i.classList.remove('active'));
+      item.classList.add('active');
+      const target = item.dataset.view;
+      document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+      document.getElementById('view-' + target).classList.add('active');
+    });
+  });
+
+  // toggle customer dropdown for demo purposes
+  const search = document.getElementById('customerSearch');
+  const dropdown = document.getElementById('customerDropdown');
+  search.addEventListener('focus', () => dropdown.style.display = 'block');
+  search.addEventListener('blur', () => setTimeout(() => dropdown.style.display = 'none', 150));
+  dropdown.querySelectorAll('.opt, .opt-new').forEach(opt => {
+    opt.addEventListener('click', () => {
+      search.value = opt.textContent.replace(/\s+98XXXXXX21|\s+99XXXXXX04/, '').replace('+ Add new customer "Malti Ji"', 'Malti Ji');
+      dropdown.style.display = 'none';
+    });
+  });
+</script>
+
+</body>
+</html>
