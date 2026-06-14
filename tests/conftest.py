@@ -65,3 +65,13 @@ def client(tmp_path, monkeypatch):
 
     engine_state.dispose()
     config.get_settings.cache_clear()
+
+
+@pytest.fixture
+def admin_client(client):
+    """A client logged in as the bootstrapped admin."""
+    client.post(
+        "/auth/bootstrap",
+        json={"username": "admin", "password": "pw1234", "full_name": "Owner"},
+    )
+    return client

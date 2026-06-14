@@ -15,6 +15,11 @@ from fastapi.staticfiles import StaticFiles
 from app import __version__
 from app.config import get_settings
 from app.routers import auth as auth_router
+from app.routers import customers as customers_router
+from app.routers import lookups as lookups_router
+from app.routers import parties as parties_router
+from app.routers import settings as settings_router
+from app.routers import users as users_router
 
 APP_DIR = Path(__file__).resolve().parent
 STATIC_DIR = APP_DIR / "static"
@@ -33,6 +38,12 @@ app = FastAPI(title="Khata", version=__version__, lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 app.include_router(auth_router.router)
+app.include_router(customers_router.router)
+app.include_router(parties_router.router)
+app.include_router(lookups_router.component_types)
+app.include_router(lookups_router.purity_types)
+app.include_router(users_router.router)
+app.include_router(settings_router.router)
 
 
 @app.get("/health")

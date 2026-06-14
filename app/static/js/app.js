@@ -75,6 +75,8 @@
     show($("nav-system-section"), isAdmin);
   }
 
+  const mounted = new Set();
+
   function switchView(view) {
     document.querySelectorAll(".nav-item[data-view]").forEach((i) =>
       i.classList.toggle("active", i.dataset.view === view)
@@ -82,6 +84,13 @@
     document.querySelectorAll(".view").forEach((v) =>
       v.classList.toggle("active", v.id === "view-" + view)
     );
+    // Lazily mount a registered view module the first time it's opened.
+    const mod = window.KhataViews && window.KhataViews[view];
+    if (mod && !mounted.has(view)) {
+      mounted.add(view);
+      try { mod.mount(document.getElementById("view-" + view)); }
+      catch (e) { console.error("view mount failed", view, e); }
+    }
   }
 
   function wireNav() {
@@ -90,6 +99,9 @@
     });
     $("logout-btn").addEventListener("click", async () => {
       await api.post("/auth/logout");
+      mounted.clear();
+      document.querySelectorAll(".view").forEach((v) =>
+        v.classList.toggle("active", v.id === "view-entry"));
       showAuth("login", "Signed out.");
     });
   }
