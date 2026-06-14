@@ -32,6 +32,20 @@ def encrypted_engine(db_path: Path, master_key: bytes) -> Engine:
 
 
 @pytest.fixture
+def session(encrypted_engine: Engine):
+    """A session on a fully initialized (created + seeded) encrypted DB."""
+    from sqlalchemy.orm import Session
+
+    from app.services.seed import initialize_database
+
+    initialize_database(encrypted_engine)
+    # Mirror the production sessionmaker (app.db.EngineState): keeping attributes
+    # populated after commit lets the audit layer capture old values on update.
+    with Session(encrypted_engine, expire_on_commit=False) as s:
+        yield s
+
+
+@pytest.fixture
 def client(tmp_path, monkeypatch):
     """FastAPI TestClient with the data dir pointed at a throwaway location."""
     from fastapi.testclient import TestClient
