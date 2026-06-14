@@ -18,10 +18,12 @@ from app.routers import auth as auth_router
 from app.routers import cash as cash_router
 from app.routers import dashboard as dashboard_router
 from app.routers import customers as customers_router
+from app.routers import ledgers as ledgers_router
 from app.routers import lookups as lookups_router
 from app.routers import orders as orders_router
 from app.routers import parties as parties_router
 from app.routers import purchases as purchases_router
+from app.routers import reports as reports_router
 from app.routers import settings as settings_router
 from app.routers import users as users_router
 
@@ -48,6 +50,8 @@ app.include_router(orders_router.router)
 app.include_router(cash_router.router)
 app.include_router(purchases_router.router)
 app.include_router(dashboard_router.router)
+app.include_router(reports_router.router)
+app.include_router(ledgers_router.router)
 app.include_router(lookups_router.component_types)
 app.include_router(lookups_router.purity_types)
 app.include_router(users_router.router)
