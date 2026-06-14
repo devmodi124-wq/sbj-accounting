@@ -7,3 +7,6 @@ requires-python = ">=3.11"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+# Put the repo root on sys.path so `import app` works regardless of how pytest
+# is invoked (e.g. `pytest` vs `python -m pytest`, including in CI).
+pythonpath = ["."]

@@ -24,7 +24,7 @@ jobs:
           pip install pyinstaller
 
       - name: Smoke test (import + DB encryption)
-        run: pytest tests/test_encryption.py tests/test_seed.py -q
+        run: python -m pytest tests/test_encryption.py tests/test_seed.py -q
 
       - name: Build executable
         run: pyinstaller khata.spec
