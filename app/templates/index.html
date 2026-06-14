@@ -9,7 +9,35 @@
 </head>
 <body>
 
-<div class="app">
+<!-- ===== Auth screen (login / first-run bootstrap / locked) ===== -->
+<div class="auth-wrap hidden" id="auth-screen">
+  <div class="auth-card">
+    <div class="mark">Khata</div>
+    <div class="sub">Sahibabad Jewellers</div>
+
+    <div class="banner-error hidden" id="auth-error"></div>
+    <div class="banner-info hidden" id="auth-info"></div>
+
+    <form id="auth-form">
+      <div class="field hidden" id="fullname-field">
+        <label>Full name</label>
+        <input type="text" id="auth-fullname" autocomplete="name">
+      </div>
+      <div class="field">
+        <label>Username</label>
+        <input type="text" id="auth-username" autocomplete="username" autofocus>
+      </div>
+      <div class="field">
+        <label>Password</label>
+        <input type="password" id="auth-password" autocomplete="current-password">
+      </div>
+      <button type="submit" class="btn btn-primary" id="auth-submit" style="width:100%; justify-content:center;">Sign in</button>
+    </form>
+  </div>
+</div>
+
+<!-- ===== Main application (shown once authenticated) ===== -->
+<div class="app hidden" id="app-screen">
   <aside class="sidebar">
     <div class="brand">
       <div class="mark">Khata</div>
@@ -29,31 +57,32 @@
     <button class="nav-item" data-view="customers"><span class="icon">&#9783;</span> Customers</button>
     <button class="nav-item" data-view="ledgers"><span class="icon">&#8801;</span> Ledgers</button>
 
-    <div class="nav-section">System</div>
-    <button class="nav-item" data-view="settings"><span class="icon">&#9881;</span> Settings</button>
+    <div class="nav-section" id="nav-system-section">System</div>
+    <button class="nav-item nav-admin" data-view="settings"><span class="icon">&#9881;</span> Settings</button>
 
     <div class="sidebar-footer">
       <div class="user-chip">
         <div class="user-avatar" id="userAvatar">&middot;</div>
         <div>
           <div class="user-name" id="userName">—</div>
-          <div class="user-role" id="userRole">offline</div>
+          <div class="user-role" id="userRole">—</div>
         </div>
       </div>
-      Working offline &middot; all data on this device
+      <button class="btn btn-sm" id="logout-btn" style="width:100%; justify-content:center;">Sign out</button>
     </div>
   </aside>
 
   <main class="main" id="main">
     <div class="view active" id="view-entry">
-      <div class="topbar"><div><h1>Khata</h1><div class="meta">Scaffolding ready — screens are built in later phases.</div></div></div>
+      <div class="topbar"><div><h1>Welcome</h1><div class="meta">Signed in. Feature screens land in the next phases.</div></div></div>
       <div class="card"><div class="card-body muted">
-        Phase&nbsp;0 shell. The application UI (New Order, Dashboard, Reports&hellip;) renders here as each phase lands.
+        Auth, encryption, roles and backdating are in place. New Order, Dashboard and Reports come next.
       </div></div>
     </div>
   </main>
 </div>
 
+<script src="/static/js/api.js"></script>
 <script src="/static/js/app.js"></script>
 </body>
 </html>

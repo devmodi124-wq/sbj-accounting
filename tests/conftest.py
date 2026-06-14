@@ -51,12 +51,17 @@ def client(tmp_path, monkeypatch):
     from fastapi.testclient import TestClient
 
     monkeypatch.setenv("KHATA_DATA_DIR", str(tmp_path / "data"))
-    # config + main cache settings via lru_cache; clear so the env override is read.
+    # config caches settings via lru_cache; clear so the env override is read.
     import app.config as config
+    from app.db import engine_state
 
     config.get_settings.cache_clear()
+    engine_state.dispose()  # ensure a locked, unbound DB for each test
+
     from app.main import app as fastapi_app
 
     with TestClient(fastapi_app) as c:
         yield c
+
+    engine_state.dispose()
     config.get_settings.cache_clear()

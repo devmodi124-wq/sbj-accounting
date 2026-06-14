@@ -14,6 +14,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app import __version__
 from app.config import get_settings
+from app.routers import auth as auth_router
 
 APP_DIR = Path(__file__).resolve().parent
 STATIC_DIR = APP_DIR / "static"
@@ -30,6 +31,8 @@ async def lifespan(_app: FastAPI):
 app = FastAPI(title="Khata", version=__version__, lifespan=lifespan)
 
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+app.include_router(auth_router.router)
 
 
 @app.get("/health")

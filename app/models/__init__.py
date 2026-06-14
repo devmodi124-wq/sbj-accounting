@@ -11,6 +11,7 @@ from app.models.base import (
     PaymentMode,
     UserRole,
 )
+from app.models.auth import UserSession
 from app.models.cash import CashEntry
 from app.models.ledger import OpeningBalance
 from app.models.masters import ComponentType, Customer, Party, PurityType
@@ -28,6 +29,7 @@ __all__ = [
     "OrderStatus",
     "PaymentMode",
     "UserRole",
+    "UserSession",
     "CashEntry",
     "OpeningBalance",
     "ComponentType",

@@ -66,11 +66,15 @@ class EngineState:
     def __init__(self) -> None:
         self.engine: Optional[Engine] = None
         self.sessionmaker: Optional[sessionmaker[Session]] = None
+        # Held in memory while unlocked so admin ops (create user, reset password,
+        # backup, kill-switch rekey) can re-wrap the keyfile / rekey the DB.
+        self.master_key: Optional[bytes] = None
 
     def bind(self, db_path: Path, key: bytes, *, echo: bool = False) -> Engine:
         self.dispose()
         self.engine = build_engine(db_path, key, echo=echo)
         self.sessionmaker = sessionmaker(bind=self.engine, expire_on_commit=False)
+        self.master_key = key
         return self.engine
 
     def dispose(self) -> None:
@@ -78,6 +82,7 @@ class EngineState:
             self.engine.dispose()
         self.engine = None
         self.sessionmaker = None
+        self.master_key = None
 
     @property
     def is_unlocked(self) -> bool:

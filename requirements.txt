@@ -16,7 +16,7 @@ uvicorn[standard]>=0.29
 SQLAlchemy>=2.0
 sqlcipher3
 pydantic>=2.6
-passlib[bcrypt]>=1.7
+bcrypt>=4.1
 cryptography>=42.0
 openpyxl>=3.1
 python-multipart>=0.0.9
