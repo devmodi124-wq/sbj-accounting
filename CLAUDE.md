@@ -20,55 +20,67 @@ The `BUILD_SPEC.md` is the canonical source of truth. `prototype.html` is the vi
 ## Dev workflow
 
 ```bash
-# Install dependencies
-pip install -r requirements.txt
+# One-time setup (macOS): venv + deps + SQLCipher binding (built from Homebrew sqlcipher)
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+scripts/install_sqlcipher.sh           # brew install sqlcipher + build sqlcipher3
 
-# Run development server (macOS)
-uvicorn app.main:app --reload --port 8000
+# Run the dev server (data dir lives OUTSIDE the repo)
+KHATA_DATA_DIR=../khata-data .venv/bin/python -m uvicorn app.main:app --reload --port 8731
+# …or the packaged entrypoint (picks a free port + opens the browser):
+.venv/bin/python -m app.launcher
 
-# Run a specific test file
-pytest tests/test_orders.py -v
-
-# Run all tests
-pytest
+# Tests
+.venv/bin/python -m pytest                     # all
+.venv/bin/python -m pytest tests/test_orders.py -v
 ```
 
-The Windows `.exe` build runs via GitHub Actions on a Windows runner (or manually). Do not build it on macOS.
+First launch shows a bootstrap screen to create the admin account. **`sqlcipher3` has no
+universal wheel** — on macOS it is built from source against Homebrew sqlcipher (see
+`scripts/install_sqlcipher.sh`); the Windows `.exe` build (GitHub Actions, `.github/workflows/
+build-windows.yml`) uses `sqlcipher3-binary` + `pyinstaller khata.spec`. Do not build the exe on macOS.
 
 ## Database
 
 The database file lives **outside** the repo at `../khata-data/khata.db` (or wherever `settings.backup_folder_path` points). This path is `.gitignore`d — no real customer data should ever enter git history. On first run, the app seeds `component_types` (Round/RND, Stone, Marquise/MRQ, Moti/Pearl, Chowk/CHK, Labour) and `purity_types` (14 KT, 18 KT, 22 KT, 916, Silver).
 
-**Encryption model**: SQLCipher encrypts the DB at rest. Any valid user's password must be able to unlock the DB (use a fixed master key stored encrypted per-user, not each user's raw password as the DB key). Losing one user's password must not lock out the entire database.
+**Encryption model** (implemented in `app/crypto/keyfile.py` + `app/db.py`): one random 32-byte master key encrypts the DB (SQLCipher raw-key `PRAGMA key`). A side `khata.keys` file stores that master key wrapped per-user (scrypt KEK + AES-GCM). Any user unlocks it; admin password reset re-wraps without rekeying. The master key is held in `engine_state.master_key` while unlocked (needed for create-user / reset / kill-switch rekey). Frontend is a JSON API + vanilla JS (no framework); schema is `create_all` + a `schema_version` setting (no Alembic).
 
 ## Architecture
 
 ```
 app/
-  main.py          # FastAPI app, startup (open browser, init DB)
-  database.py      # SQLAlchemy engine with SQLCipher, session management
-  models.py        # SQLAlchemy ORM models (all tables)
-  auth.py          # bcrypt hashing, JWT/session tokens, single-session enforcement
-  audit.py         # Shared write layer — all mutations go through here and log to audit_log
-  killswitch.py    # Lock / Destroy logic (clean interface for future v2 extensions)
-  routers/
-    orders.py
-    cash.py
-    purchases.py
-    customers.py
-    parties.py
-    reports.py
-    settings.py
-    import_.py
-  templates/       # Jinja2 HTML templates
+  main.py            # FastAPI app: mounts static, includes all routers, serves SPA shell
+  launcher.py        # packaged entrypoint (free port + open browser + uvicorn)
+  config.py          # external data-dir resolution (KHATA_DATA_DIR), db/keyfile paths
+  db.py              # SQLCipher engine factory + EngineState (holds master key while unlocked)
+  runtime.py         # free-port + browser-open helpers
+  killswitch.py      # Lock (rekey + seal) / Destroy (secure-delete), clean v2 interface
+  crypto/keyfile.py  # master-key envelope (scrypt + AES-GCM); any user unlocks, admin re-wraps
+  models/            # ORM package (user, masters, order, cash, purchase, ledger, system, auth)
+  schemas/           # pydantic request/response models
+  services/          # business logic: audit, matching, backdating, orders, cash, purchases,
+                     #   dashboard, reports, ledger, seed, settings_store, backup,
+                     #   import_template, import_data
+  auth/              # security (bcrypt), service (bootstrap/login/logout), deps (current user/admin)
+  routers/           # auth, customers, parties, orders, cash, purchases, lookups, users,
+                     #   settings, dashboard, reports, ledgers, import_, system
   static/
-    chart.js       # vendored
-    fonts/         # vendored Source Serif 4 + IBM Plex Sans
-    app.js
-    style.css
+    vendor/chart.umd.min.js     # vendored Chart.js
+    fonts/                      # vendored Source Serif 4 + IBM Plex Sans (woff2)
+    css/ (style.css, fonts.css)
+    js/  (api.js, ui.js, app.js + views/*.js per screen)
+  templates/index.html          # single SPA shell; JS renders all views client-side
 ```
 
-**Critical architectural rule**: All writes to `orders`, `order_items`, `cash_entries`, `purchases`, `customers`, `parties`, `users`, `settings`, `component_types`, `purity_types` must go through `audit.py`'s shared write layer, which automatically logs to `audit_log`. Route handlers must not log manually.
+The frontend is a **JSON API + vanilla JS SPA**: `index.html` is a static shell and each screen is a
+view module under `static/js/views/` registered on `window.KhataViews` and lazily mounted by `app.js`.
+
+**Critical architectural rule**: every mutating DB write is logged to `audit_log` automatically by
+SQLAlchemy session events in `app/services/audit.py` (excluding `audit_log` and `sessions`). Route
+handlers/services never log manually — they only set the acting user, which `get_current_user` does via
+the `current_user_id` contextvar. Sessions use `expire_on_commit=False` so the audit layer can capture
+old values on update.
 
 ## Key business rules
 
