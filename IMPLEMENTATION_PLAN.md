@@ -3,7 +3,7 @@
 ## Context
 
 Khata is a fully offline, single-installation desktop accounting app for a small jewellery
-business (Sahibabad Jewellers), replacing a scattered Excel workflow. It runs as a Windows
+business (Shree Balaji Jewellers), replacing a scattered Excel workflow. It runs as a Windows
 `.exe` that starts a local FastAPI server and opens the browser to `127.0.0.1:<port>`.
 Single concurrent user, two roles (Admin / Employee), encrypted-at-rest SQLite.
 

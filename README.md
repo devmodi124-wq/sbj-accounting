@@ -1,7 +1,7 @@
 # Khata — Jewellery Shop Accounting
 
 A fully offline, single-installation desktop accounting app for a small jewellery business
-(Sahibabad Jewellers), replacing a scattered Excel workflow. It runs a local FastAPI server and
+(Shree Balaji Jewellers), replacing a scattered Excel workflow. It runs a local FastAPI server and
 opens in the default browser — all data stays on the machine, encrypted at rest.
 
 - **Single machine, single concurrent user**, with named accounts and two roles (Admin / Employee).
