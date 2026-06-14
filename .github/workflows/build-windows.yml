@@ -16,12 +16,16 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies
+        shell: bash
         run: |
+          set -euo pipefail
           python -m pip install --upgrade pip
-          # SQLCipher binding: prebuilt binary wheel on Windows.
-          pip install sqlcipher3-binary
+          # SQLCipher binding: prebuilt cross-platform wheel (imports as `sqlcipher3`).
+          pip install sqlcipher3-wheels
           pip install -r requirements.txt
           pip install pyinstaller
+          # Fail early if the binding isn't importable.
+          python -c "import sqlcipher3, sqlcipher3.dbapi2; print('sqlcipher3 ok')"
 
       - name: Smoke test (import + DB encryption)
         run: python -m pytest tests/test_encryption.py tests/test_seed.py -q

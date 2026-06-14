@@ -16,7 +16,7 @@ uvicorn[standard]>=0.29
 SQLAlchemy>=2.0
 # sqlcipher3 is installed per-platform (NOT listed here, no universal wheel):
 #   macOS dev : scripts/install_sqlcipher.sh  (builds against Homebrew sqlcipher)
-#   Windows CI: pip install sqlcipher3-binary  (see .github/workflows/build-windows.yml)
+#   Windows CI: pip install sqlcipher3-wheels  (see .github/workflows/build-windows.yml)
 pydantic>=2.6
 bcrypt>=4.1
 cryptography>=42.0
