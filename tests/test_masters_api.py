@@ -37,6 +37,39 @@ def test_customers_require_auth(client):
     assert client.get("/api/customers").status_code == 401
 
 
+def test_delete_unreferenced_customer(admin_client):
+    cid = admin_client.post("/api/customers", json={"name": "Deletable"}).json()["id"]
+    assert admin_client.delete(f"/api/customers/{cid}").status_code == 200
+    assert admin_client.get(f"/api/customers/{cid}").status_code == 404
+
+
+def test_delete_customer_with_orders_blocked(admin_client):
+    comps = [t["id"] for t in admin_client.get("/api/component-types").json()]
+    cat = admin_client.get("/api/item-categories").json()[0]["id"]
+    cid = admin_client.post("/api/customers", json={"name": "Has Order"}).json()["id"]
+    admin_client.post("/api/orders", json={
+        "customer_id": cid, "order_date": "2026-06-14", "item_category_id": cat,
+        "payment_received": "0", "items": [{"component_type_id": comps[0], "price": "100"}],
+    })
+    r = admin_client.delete(f"/api/customers/{cid}")
+    assert r.status_code == 409
+    assert r.json()["detail"] == "has_references"
+
+
+def test_delete_party_with_purchase_blocked(admin_client):
+    pid = admin_client.post("/api/parties", json={"name": "Has Purchase"}).json()["id"]
+    admin_client.post("/api/purchases", json={
+        "purchase_date": "2026-06-14", "party_id": pid, "amount": "500", "amount_paid": "0",
+    })
+    assert admin_client.delete(f"/api/parties/{pid}").status_code == 409
+
+
+def test_delete_requires_admin(admin_client):
+    cid = admin_client.post("/api/customers", json={"name": "Temp"}).json()["id"]
+    emp = _login_employee(admin_client)
+    assert emp.delete(f"/api/customers/{cid}").status_code == 403
+
+
 # ===== Lookups =====
 
 def test_component_types_seeded_and_active_filter(admin_client):

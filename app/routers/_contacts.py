@@ -6,12 +6,14 @@ from typing import Callable
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.auth.deps import get_current_user, get_db
+from app.auth.deps import get_current_user, get_db, require_admin
 from app.models import User
 from app.schemas.masters import ContactIn, ContactOut
 
 
-def build_contact_router(prefix: str, tag: str, model, search_fn: Callable) -> APIRouter:
+def build_contact_router(
+    prefix: str, tag: str, model, search_fn: Callable, count_references: Callable
+) -> APIRouter:
     router = APIRouter(prefix=prefix, tags=[tag])
 
     @router.get("", response_model=list[ContactOut])
@@ -61,5 +63,17 @@ def build_contact_router(prefix: str, tag: str, model, search_fn: Callable) -> A
         db.commit()
         db.refresh(obj)
         return obj
+
+    @router.delete("/{obj_id}", dependencies=[Depends(require_admin)])
+    def delete_contact(obj_id: int, db: Session = Depends(get_db)):
+        obj = db.get(model, obj_id)
+        if obj is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "not_found")
+        if count_references(db, obj_id) > 0:
+            # Refuse to delete a record that has linked orders/transactions/ledger.
+            raise HTTPException(status.HTTP_409_CONFLICT, "has_references")
+        db.delete(obj)
+        db.commit()
+        return {"ok": True}
 
     return router

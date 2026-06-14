@@ -51,6 +51,8 @@
       username_taken: "That username is taken.",
       cannot_deactivate_self: "You can't deactivate your own account.",
       cannot_demote_self: "You can't change your own role.",
+      has_references: "This record has linked orders/transactions and can't be deleted.",
+      admin_required: "Only an admin can do this.",
     };
     return map[e && e.detail] || (e && e.message) || "Something went wrong.";
   }

@@ -65,6 +65,7 @@
 
   // ===== Main app =====
   function showApp(user) {
+    window.KhataUser = user; // available to view modules (e.g. admin-only controls)
     show($("auth-screen"), false);
     show($("app-screen"), true);
     $("userName").textContent = user.full_name || user.username;

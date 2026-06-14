@@ -14,15 +14,34 @@
       if (!rows.length) {
         tbody.appendChild(el("tr", {}, el("td", { colspan: "4", class: "muted" }, "No records.")));
       }
+      const isAdmin = window.KhataUser && window.KhataUser.role === "admin";
       for (const r of rows) {
         tbody.appendChild(
           el("tr", {}, [
             el("td", {}, r.name),
             el("td", {}, r.phone || "—"),
             el("td", {}, r.address || "—"),
-            el("td", {}, el("button", { class: "btn btn-sm", onclick: () => edit(r) }, "Edit")),
+            el("td", {}, [
+              el("button", { class: "btn btn-sm", onclick: () => edit(r) }, "Edit"),
+              isAdmin ? el("button", {
+                class: "btn btn-sm",
+                style: "margin-left:6px;border-color:var(--red);color:var(--red);",
+                onclick: () => del(r),
+              }, "Delete") : null,
+            ]),
           ])
         );
+      }
+    }
+
+    async function del(r) {
+      if (!confirm(`Delete ${r.name}? This cannot be undone.`)) return;
+      try {
+        await api.del(`${opts.endpoint}/${r.id}`);
+        toast("Deleted.");
+        load();
+      } catch (e) {
+        toast(errorText(e), "error");
       }
     }
 
@@ -107,12 +126,14 @@
   }
 
   window.KhataViews = window.KhataViews || {};
-  window.KhataViews.customers = makeContactsView({
-    endpoint: "/api/customers", title: "Customers", singular: "customer",
-    subtitle: "Search, add and edit customer records",
+  // Registered under dedicated keys so they don't collide with the read-only
+  // Customer Report (which owns the "customers" nav view).
+  window.KhataViews["manage-customers"] = makeContactsView({
+    endpoint: "/api/customers", title: "Manage Customers", singular: "customer",
+    subtitle: "Search, add, edit and (admin) delete customer records",
   });
-  window.KhataViews.parties = makeContactsView({
-    endpoint: "/api/parties", title: "Suppliers", singular: "supplier",
-    subtitle: "Search, add and edit supplier (party) records",
+  window.KhataViews["manage-parties"] = makeContactsView({
+    endpoint: "/api/parties", title: "Manage Suppliers", singular: "supplier",
+    subtitle: "Search, add, edit and (admin) delete supplier records",
   });
 })();
