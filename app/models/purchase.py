@@ -3,12 +3,16 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal
+from typing import TYPE_CHECKING
 
 from sqlalchemy import Boolean, Date, ForeignKey, Text
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
 from app.models.base import Money, TimestampMixin
+
+if TYPE_CHECKING:
+    from app.models.masters import Party
 
 
 class Purchase(TimestampMixin, Base):
@@ -25,6 +29,8 @@ class Purchase(TimestampMixin, Base):
     balance: Mapped[Decimal] = mapped_column(Money, default=0, nullable=False)
     created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     is_backdated: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
+    party: Mapped["Party"] = relationship(lazy="joined")
 
     @property
     def status(self) -> str:
