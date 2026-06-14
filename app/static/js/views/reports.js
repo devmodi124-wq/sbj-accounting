@@ -10,6 +10,8 @@
     let state = { sort: cfg.defaultSort, direction: "desc", offset: 0,
       search: "", date_from: "", date_to: "", status: "", ageing: "" };
     let root, tbody, pageInfo, footer;
+    const filterOptions = {};  // selectFilter param -> [{id,name}]
+    const hasAction = !!(cfg.ledger || cfg.orderDetail);
 
     function params(extra) {
       const p = new URLSearchParams();
@@ -20,7 +22,7 @@
       if (cfg.hasDateRange && state.date_to) p.set("date_to", state.date_to);
       if (cfg.statusOptions && state.status) p.set("status", state.status);
       if (cfg.hasAgeing && state.ageing) p.set("ageing", state.ageing);
-      if (cfg.hasSearch && cfg.searchParam === "customer_id") {} // reserved
+      (cfg.selectFilters || []).forEach((sf) => { if (state[sf.param]) p.set(sf.param, state[sf.param]); });
       for (const [k, v] of Object.entries(extra || {})) p.set(k, v);
       return p;
     }
@@ -29,7 +31,7 @@
       const data = await api.get(cfg.endpoint + "?" + params().toString());
       clear(tbody);
       if (!data.rows.length) {
-        tbody.appendChild(el("tr", {}, el("td", { class: "muted", colspan: String(cfg.columns.length + (cfg.ledger ? 1 : 0)) }, "No records.")));
+        tbody.appendChild(el("tr", {}, el("td", { class: "muted", colspan: String(cfg.columns.length + (hasAction ? 1 : 0)) }, "No records.")));
       }
       for (const row of data.rows) {
         const cells = cfg.columns.map((c) => {
@@ -47,6 +49,9 @@
         if (cfg.ledger) {
           cells.push(el("td", {}, el("button", { class: "btn btn-sm",
             onclick: () => window.KhataLedger.open(cfg.ledger, row[cfg.ledgerIdKey]) }, "Ledger")));
+        } else if (cfg.orderDetail) {
+          cells.push(el("td", {}, el("button", { class: "btn btn-sm",
+            onclick: () => window.KhataOrderDetail.open(row.id) }, "View")));
         }
         tbody.appendChild(el("tr", {}, cells));
       }
@@ -90,6 +95,11 @@
           ["", "0-30", "31-60", "61-90", "90+"].map((a) =>
             el("option", { value: a }, a ? a + " days" : "All ageing"))));
       }
+      (cfg.selectFilters || []).forEach((sf) => {
+        const opts = [el("option", { value: "" }, sf.allLabel || "All")].concat(
+          (filterOptions[sf.param] || []).map((o) => el("option", { value: o.id }, o.name)));
+        controls.push(el("select", { onchange: (e) => { state[sf.param] = e.target.value; state.offset = 0; load(); } }, opts));
+      });
       controls.push(el("div", { class: "filter-spacer" }));
       if (footer) controls.push(footer);
       controls.push(el("button", { class: "btn", onclick: exportCsv }, "⤓ Export"));
@@ -101,7 +111,7 @@
         el("th", c.sortable ? { class: "sortable", onclick: () => setSort(c.key),
           style: c.money ? "text-align:right;" : null } : (c.money ? { style: "text-align:right;" } : {}),
           c.label + (c.sortable && state.sort === c.key ? (state.direction === "asc" ? " ▲" : " ▾") : "")))
-        .concat(cfg.ledger ? [el("th", {}, "")] : [])));
+        .concat(hasAction ? [el("th", {}, "")] : [])));
     }
 
     function pager() {
@@ -112,8 +122,12 @@
     }
 
     return {
-      mount(viewEl) {
+      async mount(viewEl) {
         if (cfg.footer) footer = el("span", { class: "pill pill-red" });
+        for (const sf of (cfg.selectFilters || [])) {
+          try { filterOptions[sf.param] = await api.get(sf.endpoint + "?active_only=true"); }
+          catch (_) { filterOptions[sf.param] = []; }
+        }
         tbody = el("tbody");
         root = el("div", {}, [
           el("div", { class: "topbar" }, el("div", {}, [
@@ -136,22 +150,25 @@
   window.KhataViews = window.KhataViews || {};
   window.KhataViews.sales = makeReport({
     endpoint: "/api/reports/sales", title: "Sales Report", subtitle: "One row per order",
-    hasSearch: false, hasDateRange: true, defaultSort: "order_date",
+    hasSearch: false, hasDateRange: true, defaultSort: "order_date", orderDetail: true,
     statusOptions: [{ value: "delivered", label: "Delivered" }, { value: "pending", label: "Pending" }],
+    selectFilters: [{ param: "category_id", endpoint: "/api/item-categories", allLabel: "All categories" }],
     columns: [
       { key: "order_date", label: "Date", sortable: true }, { key: "customer_name", label: "Customer", sortable: true },
-      { key: "item_name", label: "Item" }, { key: "total_amount", label: "Total", money: true, sortable: true },
+      { key: "item_category", label: "Category" }, { key: "item_name", label: "Item" },
+      { key: "total_amount", label: "Total", money: true, sortable: true },
       { key: "payment_received", label: "Received", money: true }, { key: "balance", label: "Balance", money: true, negIfPositive: true },
       { key: "status", label: "Status", pill: statusPill },
     ],
   });
   window.KhataViews.stock = makeReport({
     endpoint: "/api/reports/stock", title: "Order / Stock Report", subtitle: "Work in progress",
-    hasDateRange: true, defaultSort: "order_date",
+    hasDateRange: true, defaultSort: "order_date", orderDetail: true,
     statusOptions: [{ value: "pending", label: "Pending" }, { value: "delivered", label: "Delivered" }],
     columns: [
       { key: "order_date", label: "Date", sortable: true }, { key: "customer_name", label: "Customer" },
-      { key: "item_name", label: "Item" }, { key: "components", label: "Components" },
+      { key: "item_category", label: "Category" }, { key: "item_name", label: "Item" },
+      { key: "components", label: "Components" },
       { key: "status", label: "Status", pill: statusPill }, { key: "days_pending", label: "Days pending", sortable: true },
     ],
   });

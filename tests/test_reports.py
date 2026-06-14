@@ -40,6 +40,25 @@ def test_sales_report_filter_by_status(admin_client):
     assert delivered["rows"][0]["item_name"] == "Ring"
 
 
+def test_sales_report_has_category_and_filters(admin_client):
+    cats = admin_client.get("/api/item-categories").json()
+    ring, necklace = cats[0]["id"], cats[1]["id"]
+    comps = _comp(admin_client)
+    admin_client.post("/api/orders", json={"customer_name": "A", "order_date": TODAY_S,
+        "item_category_id": ring, "item_name": "R", "payment_received": "0",
+        "items": [{"component_type_id": comps[0], "price": "100"}]})
+    admin_client.post("/api/orders", json={"customer_name": "B", "order_date": TODAY_S,
+        "item_category_id": necklace, "item_name": "N", "payment_received": "0",
+        "items": [{"component_type_id": comps[0], "price": "200"}]})
+
+    allrows = admin_client.get("/api/reports/sales").json()["rows"]
+    assert {r["item_category"] for r in allrows} == {cats[0]["name"], cats[1]["name"]}
+
+    filtered = admin_client.get("/api/reports/sales", params={"category_id": ring}).json()
+    assert filtered["total"] == 1
+    assert filtered["rows"][0]["item_category"] == cats[0]["name"]
+
+
 def test_sales_csv_export(admin_client):
     comps = _comp(admin_client)
     admin_client.post("/api/orders", json={"customer_name": "CsvCust", "order_date": TODAY_S, "item_category_id": 1,
@@ -49,7 +68,7 @@ def test_sales_csv_export(admin_client):
     assert r.status_code == 200
     assert r.headers["content-type"].startswith("text/csv")
     lines = r.text.strip().splitlines()
-    assert lines[0] == "Date,Customer,Item,Total,Received,Balance,Status"
+    assert lines[0] == "Date,Customer,Category,Item,Total,Received,Balance,Status"
     assert "CsvCust" in lines[1]
 
 

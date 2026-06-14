@@ -30,6 +30,7 @@ def sales(
     date_from: Optional[date] = None,
     date_to: Optional[date] = None,
     customer_id: Optional[int] = None,
+    category_id: Optional[int] = None,
     status: Optional[OrderStatus] = None,
     sort: str = "order_date",
     direction: str = "desc",
@@ -40,8 +41,9 @@ def sales(
     _user: User = Depends(get_current_user),
 ):
     data = reports.sales_report(
-        db, date_from=date_from, date_to=date_to, customer_id=customer_id, status=status,
-        sort=sort, direction=direction, limit=(100000 if format == "csv" else limit), offset=offset,
+        db, date_from=date_from, date_to=date_to, customer_id=customer_id,
+        category_id=category_id, status=status, sort=sort, direction=direction,
+        limit=(100000 if format == "csv" else limit), offset=offset,
     )
     return _csv("sales", data["rows"]) if format == "csv" else data
 

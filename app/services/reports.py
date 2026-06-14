@@ -77,6 +77,7 @@ def sales_report(
     date_from: Optional[date] = None,
     date_to: Optional[date] = None,
     customer_id: Optional[int] = None,
+    category_id: Optional[int] = None,
     status: Optional[OrderStatus] = None,
     sort: str = "order_date",
     direction: str = "desc",
@@ -90,6 +91,8 @@ def sales_report(
         q = q.filter(Order.order_date <= date_to)
     if customer_id:
         q = q.filter(Order.customer_id == customer_id)
+    if category_id:
+        q = q.filter(Order.item_category_id == category_id)
     if status:
         q = q.filter(Order.status == status)
     rows = [
@@ -97,7 +100,8 @@ def sales_report(
             "id": o.id,
             "order_date": o.order_date.isoformat(),
             "customer_name": o.customer.name if o.customer else "",
-            "item_name": o.item_name,
+            "item_category": o.item_category.name if o.item_category else "",
+            "item_name": o.item_name or "",
             "total_amount": _money(o.total_amount),
             "payment_received": _money(o.payment_received),
             "balance": _money(o.balance),
@@ -138,7 +142,8 @@ def order_stock_report(
             "id": o.id,
             "order_date": o.order_date.isoformat(),
             "customer_name": o.customer.name if o.customer else "",
-            "item_name": o.item_name,
+            "item_category": o.item_category.name if o.item_category else "",
+            "item_name": o.item_name or "",
             "components": len(o.items),
             "status": o.status.value,
             "days_pending": days_pending,
@@ -337,11 +342,12 @@ def customer_report(
 
 # Column definitions for CSV export, keyed by report name.
 CSV_COLUMNS = {
-    "sales": [("order_date", "Date"), ("customer_name", "Customer"), ("item_name", "Item"),
-              ("total_amount", "Total"), ("payment_received", "Received"), ("balance", "Balance"),
-              ("status", "Status")],
-    "stock": [("order_date", "Date"), ("customer_name", "Customer"), ("item_name", "Item"),
-              ("components", "Components"), ("status", "Status"), ("days_pending", "Days pending")],
+    "sales": [("order_date", "Date"), ("customer_name", "Customer"), ("item_category", "Category"),
+              ("item_name", "Item"), ("total_amount", "Total"), ("payment_received", "Received"),
+              ("balance", "Balance"), ("status", "Status")],
+    "stock": [("order_date", "Date"), ("customer_name", "Customer"), ("item_category", "Category"),
+              ("item_name", "Item"), ("components", "Components"), ("status", "Status"),
+              ("days_pending", "Days pending")],
     "debtors": [("name", "Customer"), ("phone", "Phone"), ("billed", "Total billed"),
                 ("received", "Received"), ("balance", "Balance"), ("last_txn", "Last txn"),
                 ("ageing", "Ageing")],
