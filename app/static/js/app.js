@@ -73,6 +73,7 @@
     const isAdmin = user.role === "admin";
     document.querySelectorAll(".nav-admin").forEach((el) => show(el, isAdmin));
     show($("nav-system-section"), isAdmin);
+    switchView("entry"); // mount the default (New Order) screen
   }
 
   const mounted = new Set();

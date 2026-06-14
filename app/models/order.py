@@ -3,9 +3,13 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from decimal import Decimal
+from typing import TYPE_CHECKING
 
 from sqlalchemy import Boolean, Date, DateTime, Enum, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+if TYPE_CHECKING:
+    from app.models.masters import Customer
 
 from app.db import Base
 from app.models.base import (
@@ -51,6 +55,7 @@ class Order(TimestampMixin, Base):
         cascade="all, delete-orphan",
         order_by="OrderItem.sort_order",
     )
+    customer: Mapped["Customer"] = relationship(lazy="joined")
 
 
 class OrderItem(Base):
