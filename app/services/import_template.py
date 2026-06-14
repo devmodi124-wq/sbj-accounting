@@ -8,7 +8,7 @@ from openpyxl.styles import Font, PatternFill
 from openpyxl.worksheet.datavalidation import DataValidation
 from sqlalchemy.orm import Session
 
-from app.models import ComponentType, PurityType
+from app.models import ComponentType, ItemCategory, PurityType, SupplySource, WeightType
 
 HEADER_FILL = PatternFill("solid", fgColor="1C1B19")
 HEADER_FONT = Font(color="FBF8F2", bold=True)
@@ -17,8 +17,9 @@ SHEETS = {
     "Customers": ["name", "phone", "address", "notes"],
     "Parties": ["name", "phone", "address", "notes"],
     "Opening Balances": ["entity_type", "entity_name", "as_of_date", "amount", "direction"],
-    "Orders": ["order_ref", "customer_name", "order_date", "item_name", "order_code",
-               "status", "payment_received", "payment_mode", "notes"],
+    "Orders": ["order_ref", "customer_name", "order_date", "item_category", "item_name",
+               "weight_type", "supply_source", "order_code", "status", "payment_received",
+               "payment_mode", "notes"],
     "Order Items": ["order_ref", "component_type", "pcs", "weight", "purity", "rate", "price"],
     "Cash Entries": ["date", "person_name", "details", "type", "amount"],
     "Purchases": ["date", "party_name", "details", "entry_notes", "amount", "amount_paid"],
@@ -31,7 +32,9 @@ INSTRUCTIONS = [
     "",
     "Customers / Parties: 'name' is required; phone/address/notes optional.",
     "Orders: one row per order. 'order_ref' is your own reference used to link Order Items.",
-    "  status = pending or delivered. payment_mode = cash/upi/bank_transfer/old_gold_exchange/other.",
+    "  item_category is REQUIRED (dropdown). item_name (free text), weight_type and",
+    "  supply_source are optional. status = pending or delivered.",
+    "  payment_mode = cash/upi/bank_transfer/old_gold_exchange/other.",
     "Order Items: one or more rows per order; 'order_ref' must match a row in Orders.",
     "  component_type and purity must match the shop's configured lists (dropdowns provided).",
     "Cash Entries: type = received or paid.",
@@ -58,6 +61,9 @@ def _style_header(ws, headers: list[str]) -> None:
 def build_template(session: Session) -> bytes:
     components = [c.name for c in session.query(ComponentType).filter_by(is_active=True).all()]
     purities = [p.name for p in session.query(PurityType).filter_by(is_active=True).all()]
+    categories = [c.name for c in session.query(ItemCategory).filter_by(is_active=True).all()]
+    weights = [w.name for w in session.query(WeightType).filter_by(is_active=True).all()]
+    supplies = [s.name for s in session.query(SupplySource).filter_by(is_active=True).all()]
 
     wb = Workbook()
     # Instructions sheet first.
@@ -79,8 +85,13 @@ def build_template(session: Session) -> bytes:
             dv.add(f"{col_letter}2:{col_letter}1000")
 
         if title == "Orders":
-            add_dv(["pending", "delivered"], "F")
-            add_dv(["cash", "upi", "bank_transfer", "old_gold_exchange", "other"], "H")
+            # Columns: A ref, B customer, C date, D category, E item_name, F weight,
+            #          G supply, H code, I status, J received, K mode, L notes
+            add_dv(categories, "D")
+            add_dv(weights, "F")
+            add_dv(supplies, "G")
+            add_dv(["pending", "delivered"], "I")
+            add_dv(["cash", "upi", "bank_transfer", "old_gold_exchange", "other"], "K")
         elif title == "Order Items":
             add_dv(components, "B")
             add_dv(purities, "E")

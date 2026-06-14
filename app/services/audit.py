@@ -24,8 +24,9 @@ from app.models.system import AuditLog
 # Set per-request (middleware) or per-operation (acting_as). None = system action.
 current_user_id: ContextVar[Optional[int]] = ContextVar("current_user_id", default=None)
 
-# Never audit the audit log itself (recursion), nor the churny session table.
-_EXCLUDED_TABLES = {"audit_log", "sessions"}
+# Never audit the audit log itself (recursion), the churny session table, or image
+# blobs (binary payloads have no place in the JSON audit trail).
+_EXCLUDED_TABLES = {"audit_log", "sessions", "order_images"}
 
 _PENDING_KEY = "_audit_pending"
 

@@ -10,8 +10,16 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
 from app.db import SCHEMA_VERSION, Base
-from app.models import ComponentType, PurityType, Setting
+from app.models import (
+    ComponentType,
+    ItemCategory,
+    PurityType,
+    Setting,
+    SupplySource,
+    WeightType,
+)
 from app.services.audit import acting_as
+from app.services.settings_store import set_setting
 
 # Seeded on first run (admin can rename/deactivate/reorder afterwards).
 DEFAULT_COMPONENT_TYPES = [
@@ -24,6 +32,12 @@ DEFAULT_COMPONENT_TYPES = [
 ]
 
 DEFAULT_PURITY_TYPES = ["14 KT", "18 KT", "22 KT", "916", "Silver"]
+
+DEFAULT_ITEM_CATEGORIES = [
+    "Ring", "Necklace", "Tops", "Bracelet", "Bangle", "Pendant", "Earrings", "Chain",
+]
+DEFAULT_WEIGHT_TYPES = ["Lightweight", "Normal", "Heavyweight"]
+DEFAULT_SUPPLY_SOURCES = ["On Order", "Stock"]
 
 # key -> default value. Only inserted when missing; never overwrites existing.
 DEFAULT_SETTINGS = {
@@ -60,12 +74,40 @@ def seed_defaults(session: Session) -> None:
     with acting_as(None):
         _seed_lookup(session, ComponentType, DEFAULT_COMPONENT_TYPES)
         _seed_lookup(session, PurityType, DEFAULT_PURITY_TYPES)
+        _seed_lookup(session, ItemCategory, DEFAULT_ITEM_CATEGORIES)
+        _seed_lookup(session, WeightType, DEFAULT_WEIGHT_TYPES)
+        _seed_lookup(session, SupplySource, DEFAULT_SUPPLY_SOURCES)
         _seed_settings(session)
         session.commit()
 
 
+# Columns added after v1 — backfilled onto an existing `orders` table. (create_all
+# only creates missing *tables*, never alters existing ones.) New nullable FK
+# columns; safe to add to a populated table. Note: an existing v1 DB keeps
+# item_name NOT NULL — only relevant if a pre-v2 database is upgraded.
+_V2_ORDER_COLUMNS = {
+    "item_category_id": "INTEGER REFERENCES item_categories(id)",
+    "weight_type_id": "INTEGER REFERENCES weight_types(id)",
+    "supply_source_id": "INTEGER REFERENCES supply_sources(id)",
+}
+
+
+def _migrate_schema(engine: Engine) -> None:
+    with engine.begin() as conn:
+        existing = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(orders)")}
+        for column, decl in _V2_ORDER_COLUMNS.items():
+            if column not in existing:
+                conn.exec_driver_sql(f"ALTER TABLE orders ADD COLUMN {column} {decl}")
+
+
 def initialize_database(engine: Engine) -> None:
-    """Create tables + seed defaults. Safe to call on every startup."""
+    """Create tables, migrate, seed defaults, and stamp the schema version.
+
+    Idempotent — safe to call on every startup."""
     create_all(engine)
+    _migrate_schema(engine)
     with Session(engine) as session:
         seed_defaults(session)
+        with acting_as(None):
+            set_setting(session, "schema_version", str(SCHEMA_VERSION))
+            session.commit()

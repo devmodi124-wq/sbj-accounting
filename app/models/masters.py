@@ -52,3 +52,30 @@ class PurityType(Base):
     name: Mapped[str] = mapped_column(String(40), unique=True, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
+
+class _Lookup:
+    """Common shape for simple admin-managed dropdown lookups."""
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(80), unique=True, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
+
+class ItemCategory(_Lookup, Base):
+    """Order item category (Ring, Necklace, Tops, Bracelet, …). Admin-managed."""
+
+    __tablename__ = "item_categories"
+
+
+class WeightType(_Lookup, Base):
+    """Weight class (Lightweight, Normal, Heavyweight). Admin-managed."""
+
+    __tablename__ = "weight_types"
+
+
+class SupplySource(_Lookup, Base):
+    """Where an order is supplied from (On Order, Stock). Admin-managed."""
+
+    __tablename__ = "supply_sources"

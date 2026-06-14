@@ -12,11 +12,16 @@ def _component_ids(client):
     return [t["id"] for t in client.get("/api/component-types").json()]
 
 
+def _category_id(client):
+    return client.get("/api/item-categories").json()[0]["id"]
+
+
 def _order_payload(client, **overrides):
     comps = _component_ids(client)
     payload = {
         "customer_name": "Malti Devi",
         "order_date": date.today().isoformat(),
+        "item_category_id": _category_id(client),
         "item_name": "Ring",
         "status": "delivered",
         "payment_received": "10000",
@@ -79,6 +84,76 @@ def test_admin_backdated_order_allowed(admin_client):
     r = admin_client.post("/api/orders", json=_order_payload(admin_client, order_date=old))
     assert r.status_code == 201
     assert r.json()["is_backdated"] is True
+
+
+def test_category_required(admin_client):
+    payload = _order_payload(admin_client)
+    del payload["item_category_id"]
+    r = admin_client.post("/api/orders", json=payload)
+    assert r.status_code == 422  # pydantic: field required
+
+
+def test_invalid_category_rejected(admin_client):
+    r = admin_client.post("/api/orders", json=_order_payload(admin_client, item_category_id=99999))
+    assert r.status_code == 422
+
+
+def test_category_weight_supply_persisted(admin_client):
+    cats = admin_client.get("/api/item-categories").json()
+    weights = admin_client.get("/api/weight-types").json()
+    supplies = admin_client.get("/api/supply-sources").json()
+    body = admin_client.post("/api/orders", json=_order_payload(
+        admin_client, item_category_id=cats[0]["id"],
+        weight_type_id=weights[0]["id"], supply_source_id=supplies[0]["id"],
+    )).json()
+    assert body["item_category_id"] == cats[0]["id"]
+    assert body["weight_type_id"] == weights[0]["id"]
+    assert body["supply_source_id"] == supplies[0]["id"]
+
+
+def test_item_name_optional(admin_client):
+    payload = _order_payload(admin_client)
+    payload["item_name"] = None
+    r = admin_client.post("/api/orders", json=payload)
+    assert r.status_code == 201
+    assert r.json()["item_name"] is None
+
+
+def test_order_images_upload_list_get_delete(admin_client):
+    oid = admin_client.post("/api/orders", json=_order_payload(admin_client)).json()["id"]
+    png = bytes.fromhex(
+        "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4"
+        "890000000a49444154789c6360000002000154a24f600000000049454e44ae426082"
+    )
+    r = admin_client.post(
+        f"/api/orders/{oid}/images",
+        files=[("files", ("piece1.png", png, "image/png")),
+               ("files", ("piece2.png", png, "image/png"))],
+    )
+    assert r.status_code == 201
+    imgs = r.json()
+    assert len(imgs) == 2
+
+    assert len(admin_client.get(f"/api/orders/{oid}/images").json()) == 2
+    # order list reports the image count
+    summary = [o for o in admin_client.get("/api/orders").json() if o["id"] == oid][0]
+    assert summary["image_count"] == 2
+
+    raw = admin_client.get(f"/api/orders/{oid}/images/{imgs[0]['id']}")
+    assert raw.status_code == 200
+    assert raw.headers["content-type"] == "image/png"
+
+    admin_client.delete(f"/api/orders/{oid}/images/{imgs[0]['id']}")
+    assert len(admin_client.get(f"/api/orders/{oid}/images").json()) == 1
+
+
+def test_reject_non_image_upload(admin_client):
+    oid = admin_client.post("/api/orders", json=_order_payload(admin_client)).json()["id"]
+    r = admin_client.post(
+        f"/api/orders/{oid}/images",
+        files=[("files", ("notes.txt", b"hello", "text/plain"))],
+    )
+    assert r.status_code == 400
 
 
 def test_order_audited(admin_client):

@@ -12,7 +12,15 @@ from typing import Optional
 
 from sqlalchemy.orm import Session
 
-from app.models import Customer, Order, OrderItem, User
+from app.models import (
+    Customer,
+    ItemCategory,
+    Order,
+    OrderItem,
+    SupplySource,
+    User,
+    WeightType,
+)
 from app.schemas.orders import OrderIn
 from app.services.backdating import assert_backdate_allowed, is_backdated
 from app.services.matching import get_or_create_customer
@@ -30,6 +38,23 @@ class OrderNotFound(OrderError):
 
 class CustomerNotFound(OrderError):
     pass
+
+
+class LookupInvalid(OrderError):
+    """A referenced category / weight type / supply source does not exist."""
+
+    def __init__(self, field: str) -> None:
+        self.field = field
+        super().__init__(f"invalid {field}")
+
+
+def _validate_lookups(session: Session, data: OrderIn) -> None:
+    if session.get(ItemCategory, data.item_category_id) is None:
+        raise LookupInvalid("item_category")
+    if data.weight_type_id is not None and session.get(WeightType, data.weight_type_id) is None:
+        raise LookupInvalid("weight_type")
+    if data.supply_source_id is not None and session.get(SupplySource, data.supply_source_id) is None:
+        raise LookupInvalid("supply_source")
 
 
 def _resolve_customer(session: Session, data: OrderIn, user: User) -> Customer:
@@ -66,7 +91,10 @@ def _apply_items(session: Session, order: Order, items) -> Decimal:
 def _populate(order: Order, data: OrderIn, customer: Customer, today: date) -> None:
     order.customer_id = customer.id
     order.order_date = data.order_date
+    order.item_category_id = data.item_category_id
     order.item_name = data.item_name
+    order.weight_type_id = data.weight_type_id
+    order.supply_source_id = data.supply_source_id
     order.order_code = data.order_code
     order.notes = data.notes
     order.status = data.status
@@ -78,6 +106,7 @@ def _populate(order: Order, data: OrderIn, customer: Customer, today: date) -> N
 def create_order(session: Session, user: User, data: OrderIn, today: Optional[date] = None) -> Order:
     today = today or date.today()
     assert_backdate_allowed(session, user, data.order_date, today)
+    _validate_lookups(session, data)
     customer = _resolve_customer(session, data, user)
 
     order = Order(created_by=user.id)
@@ -101,6 +130,7 @@ def update_order(
     if order is None:
         raise OrderNotFound()
     assert_backdate_allowed(session, user, data.order_date, today)
+    _validate_lookups(session, data)
     customer = _resolve_customer(session, data, user)
 
     _populate(order, data, customer, today)

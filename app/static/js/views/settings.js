@@ -235,6 +235,9 @@
         el("div", { class: "topbar" }, el("div", {}, [
           el("h1", {}, "Settings"), el("div", { class: "meta" }, "Administration")])),
         appSettingsCard(),
+        lookupCard("/api/item-categories", "Item categories"),
+        lookupCard("/api/weight-types", "Weight types"),
+        lookupCard("/api/supply-sources", "Supplied from"),
         lookupCard("/api/component-types", "Component types"),
         lookupCard("/api/purity-types", "Purity types"),
         usersCard(),

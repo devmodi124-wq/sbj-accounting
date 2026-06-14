@@ -30,7 +30,8 @@ def _upload(client, url, content):
 GOOD = {
     "Customers": [{"name": "Imp Cust", "phone": "123"}],
     "Orders": [{"order_ref": "O1", "customer_name": "Imp Cust", "order_date": "2026-06-01",
-                "item_name": "Ring", "status": "delivered", "payment_received": "500"}],
+                "item_category": "Ring", "item_name": "Ladies ring", "weight_type": "Normal",
+                "supply_source": "On Order", "status": "delivered", "payment_received": "500"}],
     "Order Items": [
         {"order_ref": "O1", "component_type": "Round (RND)", "price": "1000", "purity": "22 KT"},
         {"order_ref": "O1", "component_type": "Labour", "price": "200"},
@@ -68,7 +69,7 @@ def test_validate_reports_errors(admin_client):
     assert body["ok"] is False
     msgs = " ".join(e["message"] for e in body["errors"])
     assert "customer_name is required" in msgs
-    assert "item_name is required" in msgs
+    assert "item_category is required" in msgs
     assert "order_date" in msgs
     assert "unknown component_type" in msgs
     assert "not found in Orders" in msgs
@@ -103,7 +104,7 @@ def test_commit_reuses_existing_customer(admin_client):
     admin_client.post("/api/customers", json={"name": "Existing Cust"})
     data = {
         "Orders": [{"order_ref": "X1", "customer_name": "  existing cust ", "order_date": "2026-06-01",
-                    "item_name": "Ring", "status": "pending", "payment_received": "0"}],
+                    "item_category": "Ring", "status": "pending", "payment_received": "0"}],
         "Order Items": [{"order_ref": "X1", "component_type": "Round (RND)", "price": "100"}],
     }
     _upload(admin_client, "/api/import/commit", make_xlsx(data))

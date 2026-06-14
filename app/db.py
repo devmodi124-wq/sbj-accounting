@@ -20,7 +20,8 @@ from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 MASTER_KEY_BYTES = 32
 
 # Bumped when the schema changes; drives hand-written upgrade steps (see seed.py).
-SCHEMA_VERSION = 1
+# v2: order item_category/weight_type/supply_source lookups + order_images.
+SCHEMA_VERSION = 2
 
 
 class Base(DeclarativeBase):

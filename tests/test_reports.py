@@ -29,10 +29,10 @@ def test_ageing_buckets():
 
 def test_sales_report_filter_by_status(admin_client):
     comps = _comp(admin_client)
-    admin_client.post("/api/orders", json={"customer_name": "A", "order_date": TODAY_S,
+    admin_client.post("/api/orders", json={"customer_name": "A", "order_date": TODAY_S, "item_category_id": 1,
         "item_name": "Ring", "status": "delivered", "payment_received": "0",
         "items": [{"component_type_id": comps[0], "price": "1000"}]})
-    admin_client.post("/api/orders", json={"customer_name": "B", "order_date": TODAY_S,
+    admin_client.post("/api/orders", json={"customer_name": "B", "order_date": TODAY_S, "item_category_id": 1,
         "item_name": "Chain", "status": "pending", "payment_received": "0",
         "items": [{"component_type_id": comps[0], "price": "2000"}]})
     delivered = admin_client.get("/api/reports/sales", params={"status": "delivered"}).json()
@@ -42,7 +42,7 @@ def test_sales_report_filter_by_status(admin_client):
 
 def test_sales_csv_export(admin_client):
     comps = _comp(admin_client)
-    admin_client.post("/api/orders", json={"customer_name": "CsvCust", "order_date": TODAY_S,
+    admin_client.post("/api/orders", json={"customer_name": "CsvCust", "order_date": TODAY_S, "item_category_id": 1,
         "item_name": "Ring", "status": "delivered", "payment_received": "500",
         "items": [{"component_type_id": comps[0], "price": "1000"}]})
     r = admin_client.get("/api/reports/sales", params={"format": "csv"})
@@ -57,10 +57,10 @@ def test_sales_csv_export(admin_client):
 
 def test_debtors_report(admin_client):
     comps = _comp(admin_client)
-    admin_client.post("/api/orders", json={"customer_name": "Owes Money", "order_date": TODAY_S,
+    admin_client.post("/api/orders", json={"customer_name": "Owes Money", "order_date": TODAY_S, "item_category_id": 1,
         "item_name": "Ring", "payment_received": "300",
         "items": [{"component_type_id": comps[0], "price": "1000"}]})
-    admin_client.post("/api/orders", json={"customer_name": "Paid Up", "order_date": TODAY_S,
+    admin_client.post("/api/orders", json={"customer_name": "Paid Up", "order_date": TODAY_S, "item_category_id": 1,
         "item_name": "Ring", "payment_received": "1000",
         "items": [{"component_type_id": comps[0], "price": "1000"}]})
     d = admin_client.get("/api/reports/debtors").json()
@@ -85,7 +85,7 @@ def test_creditors_report(admin_client):
 def test_customer_report_avg(admin_client):
     comps = _comp(admin_client)
     for price in ("1000", "3000"):
-        admin_client.post("/api/orders", json={"customer_name": "Avg Cust", "order_date": TODAY_S,
+        admin_client.post("/api/orders", json={"customer_name": "Avg Cust", "order_date": TODAY_S, "item_category_id": 1,
             "item_name": "Ring", "payment_received": "0",
             "items": [{"component_type_id": comps[0], "price": price}]})
     rep = admin_client.get("/api/reports/customers", params={"search": "avg cust"}).json()
@@ -104,7 +104,7 @@ def test_customer_ledger_running_balance(admin_client):
     admin_client.post("/api/ledgers/opening-balance", json={"entity_type": "customer",
         "entity_id": cid, "as_of_date": "2020-01-01", "amount": "1000", "direction": "debit"})
     # order total 5000, paid 2000
-    admin_client.post("/api/orders", json={"customer_id": cid, "order_date": TODAY_S,
+    admin_client.post("/api/orders", json={"customer_id": cid, "order_date": TODAY_S, "item_category_id": 1,
         "item_name": "Ring", "payment_received": "2000",
         "items": [{"component_type_id": comps[0], "price": "5000"}]})
     led = admin_client.get(f"/api/ledgers/customer/{cid}").json()

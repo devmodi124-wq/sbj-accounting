@@ -6,7 +6,14 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.auth.deps import get_current_user, get_db, require_admin
-from app.models import ComponentType, PurityType, User
+from app.models import (
+    ComponentType,
+    ItemCategory,
+    PurityType,
+    SupplySource,
+    User,
+    WeightType,
+)
 from app.schemas.masters import LookupIn, LookupOut, LookupUpdate, ReorderIn
 
 
@@ -70,3 +77,6 @@ def build_lookup_router(prefix: str, tag: str, model) -> APIRouter:
 
 component_types = build_lookup_router("/api/component-types", "component-types", ComponentType)
 purity_types = build_lookup_router("/api/purity-types", "purity-types", PurityType)
+item_categories = build_lookup_router("/api/item-categories", "item-categories", ItemCategory)
+weight_types = build_lookup_router("/api/weight-types", "weight-types", WeightType)
+supply_sources = build_lookup_router("/api/supply-sources", "supply-sources", SupplySource)

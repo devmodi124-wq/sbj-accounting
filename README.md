@@ -13,8 +13,10 @@ opens in the default browser — all data stays on the machine, encrypted at res
 
 ## Features
 
-- **New Order** — customer search‑or‑create, dynamic component rows (pieces / weight / purity / rate /
-  price), live total and balance, payment mode, Save / Save as Draft.
+- **New Order** — customer search‑or‑create; a required **Item Category** plus optional Item Name,
+  **Weight Type**, and **Supplied From** (all configurable dropdowns); dynamic component rows
+  (pieces / weight / purity / rate / price); **multiple pictures** of the piece (stored encrypted in
+  the DB); live total and balance; payment mode; Save / Save as Draft.
 - **Cash Book** — record cash received and paid, optionally linked to a customer or supplier.
 - **Purchases** — supplier purchases with derived balance and paid/pending status.
 - **Dashboard** — period sales, outstanding receivables/payables, cash in hand, 12‑month sales‑trend
@@ -24,8 +26,9 @@ opens in the default browser — all data stays on the machine, encrypted at res
 - **Ledgers** — per‑customer / per‑supplier running balance with dated opening balances.
 - **Import** — fill an Excel template, validate (errors shown before anything is saved), then import
   historical data in a single transaction.
-- **Administration** — manage users, component & purity types, app settings; backups; and a Danger
-  Zone kill switch (Lock / Destroy).
+- **Administration** — manage users; configurable dropdowns (item categories, weight types, supplied
+  from, component & purity types); app settings; data-storage location; backups; and a Danger Zone
+  kill switch (Lock / Destroy).
 - **Audit log** — every create/update/delete is recorded automatically with the acting user.
 
 ---

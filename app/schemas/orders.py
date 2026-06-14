@@ -36,7 +36,10 @@ class OrderIn(BaseModel):
     customer_id: int | None = None
     customer_name: str | None = None
     order_date: date
-    item_name: str = Field(min_length=1, max_length=160)
+    item_category_id: int  # mandatory (configurable category: Ring/Necklace/…)
+    item_name: str | None = Field(default=None, max_length=160)  # optional free-text
+    weight_type_id: int | None = None
+    supply_source_id: int | None = None
     order_code: str | None = None
     notes: str | None = None
     status: OrderStatus = OrderStatus.pending
@@ -57,7 +60,10 @@ class OrderOut(BaseModel):
     id: int
     customer_id: int
     order_date: date
-    item_name: str
+    item_category_id: int | None
+    item_name: str | None
+    weight_type_id: int | None
+    supply_source_id: int | None
     order_code: str | None
     notes: str | None
     status: OrderStatus
@@ -76,8 +82,10 @@ class OrderSummary(BaseModel):
     customer_id: int
     customer_name: str
     order_date: date
-    item_name: str
+    item_category: str
+    item_name: str | None
     status: OrderStatus
     total_amount: Decimal
     payment_received: Decimal
     balance: Decimal
+    image_count: int = 0

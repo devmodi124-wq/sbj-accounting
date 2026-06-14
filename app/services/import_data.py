@@ -15,7 +15,18 @@ from typing import Optional
 from openpyxl import load_workbook
 from sqlalchemy.orm import Session
 
-from app.models import CashEntry, ComponentType, Order, OrderItem, Purchase, PurityType, User
+from app.models import (
+    CashEntry,
+    ComponentType,
+    ItemCategory,
+    Order,
+    OrderItem,
+    Purchase,
+    PurityType,
+    SupplySource,
+    User,
+    WeightType,
+)
 from app.models.base import (
     BalanceDirection,
     CashEntryType,
@@ -88,6 +99,9 @@ def validate(session: Session, sheets: dict[str, list[dict]]) -> dict:
 
     components = {c.name.strip().lower() for c in session.query(ComponentType).all()}
     purities = {p.name.strip().lower() for p in session.query(PurityType).all()}
+    categories = {c.name.strip().lower() for c in session.query(ItemCategory).all()}
+    weight_types = {w.name.strip().lower() for w in session.query(WeightType).all()}
+    supply_sources = {s.name.strip().lower() for s in session.query(SupplySource).all()}
 
     for label in ("Customers", "Parties"):
         for i, row in enumerate(sheets.get(label, []), start=2):
@@ -98,8 +112,17 @@ def validate(session: Session, sheets: dict[str, list[dict]]) -> dict:
     for i, row in enumerate(sheets.get("Orders", []), start=2):
         if not _s(row.get("customer_name")):
             err("Orders", i, "customer_name is required")
-        if not _s(row.get("item_name")):
-            err("Orders", i, "item_name is required")
+        category = _s(row.get("item_category")).lower()
+        if not category:
+            err("Orders", i, "item_category is required")
+        elif category not in categories:
+            err("Orders", i, f"unknown item_category '{row.get('item_category')}'")
+        wt = _s(row.get("weight_type")).lower()
+        if wt and wt not in weight_types:
+            err("Orders", i, f"unknown weight_type '{row.get('weight_type')}'")
+        ss = _s(row.get("supply_source")).lower()
+        if ss and ss not in supply_sources:
+            err("Orders", i, f"unknown supply_source '{row.get('supply_source')}'")
         if _parse_date(row.get("order_date")) is None:
             err("Orders", i, "order_date missing or not YYYY-MM-DD")
         status = _s(row.get("status")).lower() or "pending"
@@ -167,6 +190,9 @@ def commit(session: Session, user: User, sheets: dict[str, list[dict]], today: O
     today = today or date.today()
     comp_by_name = {c.name.strip().lower(): c for c in session.query(ComponentType).all()}
     purity_by_name = {p.name.strip().lower(): p for p in session.query(PurityType).all()}
+    category_by_name = {c.name.strip().lower(): c for c in session.query(ItemCategory).all()}
+    weight_by_name = {w.name.strip().lower(): w for w in session.query(WeightType).all()}
+    supply_by_name = {s.name.strip().lower(): s for s in session.query(SupplySource).all()}
     counts = {"customers": 0, "parties": 0, "orders": 0, "order_items": 0,
               "cash_entries": 0, "purchases": 0, "opening_balances": 0}
 
@@ -190,10 +216,15 @@ def commit(session: Session, user: User, sheets: dict[str, list[dict]], today: O
         for row in sheets.get("Orders", []):
             customer, _ = get_or_create_customer(session, _s(row.get("customer_name")), created_by=user.id)
             order_date = _parse_date(row.get("order_date"))
+            wt = _s(row.get("weight_type")).lower()
+            ss = _s(row.get("supply_source")).lower()
             order = Order(
                 customer_id=customer.id,
                 order_date=order_date,
-                item_name=_s(row.get("item_name")),
+                item_category_id=category_by_name[_s(row.get("item_category")).lower()].id,
+                item_name=_s(row.get("item_name")) or None,
+                weight_type_id=weight_by_name[wt].id if wt else None,
+                supply_source_id=supply_by_name[ss].id if ss else None,
                 order_code=_s(row.get("order_code")) or None,
                 notes=_s(row.get("notes")) or None,
                 status=OrderStatus(_s(row.get("status")).lower() or "pending"),
