@@ -73,10 +73,19 @@
       } catch (_) { toast("Upload failed.", "error"); }
     }
 
-    overlay([
+    let back;
+    const editBtn = el("button", { class: "btn btn-sm", onclick: () => {
+      if (back) back.remove();
+      window.KhataApp.editOrder(o.id);
+    } }, "Edit");
+
+    back = overlay([
       el("div", { class: "card-header" }, [
         el("h2", {}, `Order #${o.id} — ${cust.name || ""}`),
-        el("span", { class: "pill " + (o.status === "delivered" ? "pill-green" : "pill-copper") }, o.status),
+        el("div", { style: "display:flex;gap:8px;align-items:center;" }, [
+          el("span", { class: "pill " + (o.status === "delivered" ? "pill-green" : "pill-copper") }, o.status),
+          editBtn,
+        ]),
       ]),
       el("div", { class: "card-body" }, [
         el("table", {}, el("tbody", {}, [

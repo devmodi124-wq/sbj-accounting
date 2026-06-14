@@ -1,14 +1,15 @@
-// New Order screen: customer search-or-create, category/weight/source dropdowns,
-// dynamic component rows, live totals, and multiple pictures (stored encrypted).
+// New / Edit Order screen: customer search-or-create, category/weight/source
+// dropdowns, dynamic component rows, live totals, and multiple pictures.
 (function () {
   "use strict";
   const { el, clear, toast, errorText } = window.ui;
 
   let components = [], purities = [], categories = [], weights = [], supplies = [];
   let selectedCustomerId = null;
-  let selectedImages = [];
-  let rowsBody, totalEl, balanceEl, errorBanner, thumbs;
-  const f = {}; // form fields
+  let selectedImages = [];     // new files to upload
+  let editingOrderId = null;   // null = create mode
+  let rowsBody, totalEl, balanceEl, errorBanner, thumbs, existingWrap;
+  const f = {}; // form fields + title/buttons
 
   function money(n) {
     const v = Number(n) || 0;
@@ -23,7 +24,6 @@
     const opts = list.map((x) => el("option", { value: x.id }, x.name));
     return placeholder !== undefined ? [el("option", { value: "" }, placeholder)].concat(opts) : opts;
   }
-
   function isLabour(componentId) {
     const c = components.find((x) => x.id === componentId);
     return c && /labour/i.test(c.name);
@@ -38,7 +38,7 @@
     balanceEl.classList.toggle("zero", Math.abs(balance) < 0.005);
   }
 
-  function componentRow() {
+  function componentRow(item) {
     const compSel = el("select", { class: "comp" }, options(components));
     const puritySel = el("select", { class: "purity" }, options(purities, "—"));
     const pcs = el("input", { type: "text", class: "pcs" });
@@ -52,7 +52,16 @@
       if (labour) puritySel.value = "";
     }
     compSel.addEventListener("change", syncPurity);
+
+    if (item) {
+      compSel.value = String(item.component_type_id);
+      pcs.value = item.pcs ?? "";
+      weight.value = item.weight ?? "";
+      rate.value = item.rate ?? "";
+      price.value = item.price ?? "";
+    }
     syncPurity();
+    if (item && item.purity_type_id && !puritySel.disabled) puritySel.value = String(item.purity_type_id);
 
     const tr = el("tr", {}, [
       el("td", {}, compSel), el("td", {}, pcs), el("td", {}, weight),
@@ -62,7 +71,7 @@
     ]);
     return tr;
   }
-  function addRow() { rowsBody.appendChild(componentRow()); }
+  function addRow(item) { rowsBody.appendChild(componentRow(item)); }
 
   function collectItems() {
     const items = [];
@@ -129,11 +138,35 @@
       ]));
     });
   }
+  async function loadExistingImages() {
+    clear(existingWrap);
+    if (!editingOrderId) return;
+    const imgs = await api.get(`/api/orders/${editingOrderId}/images`);
+    imgs.forEach((img) => {
+      const src = `/api/orders/${editingOrderId}/images/${img.id}`;
+      existingWrap.appendChild(el("div", { style: "position:relative;" }, [
+        el("a", { href: src, target: "_blank" },
+          el("img", { src, style: "width:64px;height:64px;object-fit:cover;border-radius:4px;border:1px solid var(--hairline);" })),
+        el("button", { class: "remove-row-btn", title: "Delete picture",
+          style: "position:absolute;top:-8px;right:-8px;background:#fff;border-radius:50%;",
+          onclick: async () => {
+            try { await api.del(`/api/orders/${editingOrderId}/images/${img.id}`); loadExistingImages(); }
+            catch (_) { toast("Delete failed.", "error"); }
+          } }, "×"),
+      ]));
+    });
+  }
   async function uploadImages(orderId) {
     if (!selectedImages.length) return;
     const fd = new FormData();
     selectedImages.forEach((file) => fd.append("files", file));
     await fetch(`/api/orders/${orderId}/images`, { method: "POST", body: fd, credentials: "same-origin" });
+  }
+
+  function setMode() {
+    f.title.textContent = editingOrderId ? `Edit Order #${editingOrderId}` : "New Order";
+    f.saveBtn.textContent = editingOrderId ? "Update Order" : "Save Order";
+    existingWrap.parentElement.classList.toggle("hidden", !editingOrderId);
   }
 
   async function save(asDraft) {
@@ -158,9 +191,11 @@
       items: collectItems(),
     };
     try {
-      const created = await api.post("/api/orders", payload);
-      await uploadImages(created.id);
-      toast(asDraft ? "Draft saved." : "Order saved.");
+      let order;
+      if (editingOrderId) order = await api.put(`/api/orders/${editingOrderId}`, payload);
+      else order = await api.post("/api/orders", payload);
+      await uploadImages(order.id);
+      toast(editingOrderId ? "Order updated." : (asDraft ? "Draft saved." : "Order saved."));
       reset();
     } catch (e) {
       if (e.status === 422) { errorBanner.textContent = e.detail || e.message; errorBanner.classList.remove("hidden"); }
@@ -169,6 +204,7 @@
   }
 
   function reset() {
+    editingOrderId = null;
     selectedCustomerId = null;
     selectedImages = [];
     f.customerInput.value = ""; f.itemName.value = ""; f.code.value = "";
@@ -176,7 +212,36 @@
     f.mode.value = "cash"; f.category.value = ""; f.weight.value = ""; f.supply.value = "";
     clear(rowsBody); addRow(); recompute();
     renderThumbs();
+    clear(existingWrap);
+    setMode();
     errorBanner.classList.add("hidden");
+  }
+
+  async function edit(orderId) {
+    const o = await api.get(`/api/orders/${orderId}`);
+    editingOrderId = o.id;
+    selectedImages = [];
+    let custName = "";
+    try { custName = (await api.get(`/api/customers/${o.customer_id}`)).name; } catch (_) {}
+    f.customerInput.value = custName;
+    selectedCustomerId = o.customer_id;
+    f.date.value = o.order_date;
+    f.category.value = o.item_category_id ? String(o.item_category_id) : "";
+    f.itemName.value = o.item_name || "";
+    f.weight.value = o.weight_type_id ? String(o.weight_type_id) : "";
+    f.supply.value = o.supply_source_id ? String(o.supply_source_id) : "";
+    f.code.value = o.order_code || "";
+    f.notes.value = o.notes || "";
+    f.status.value = o.status;
+    f.received.value = o.payment_received;
+    f.mode.value = o.payment_mode || "cash";
+    clear(rowsBody);
+    if (o.items.length) o.items.forEach((it) => addRow(it)); else addRow();
+    renderThumbs();
+    await loadExistingImages();
+    setMode();
+    recompute();
+    window.scrollTo(0, 0);
   }
 
   async function mount(viewEl) {
@@ -199,12 +264,18 @@
     f.received = el("input", { type: "text", class: "num", value: "0", oninput: recompute });
     f.mode = el("select", {}, ["cash", "upi", "bank_transfer", "old_gold_exchange", "other"]
       .map((m) => el("option", { value: m }, m.replace(/_/g, " "))));
+    f.title = el("h1", {}, "New Order");
+    f.saveBtn = el("button", { class: "btn btn-primary", onclick: () => save(false) }, "Save Order");
 
     rowsBody = el("tbody");
     totalEl = el("div", { class: "total-display num" }, "₹ 0");
     balanceEl = el("div", { class: "total-display balance num" }, "₹ 0");
     errorBanner = el("div", { class: "banner-error hidden" });
     thumbs = el("div", { style: "display:flex;gap:10px;flex-wrap:wrap;margin-top:8px;" });
+    existingWrap = el("div", { style: "display:flex;gap:10px;flex-wrap:wrap;margin-top:8px;" });
+    const existingSection = el("div", { class: "hidden" }, [
+      el("div", { class: "muted", style: "font-size:12px;margin-top:8px;" }, "Existing pictures"), existingWrap,
+    ]);
     const imgInput = el("input", { type: "file", accept: "image/*", multiple: true, onchange: onPickImages });
 
     const compTable = el("table", { class: "component-table" }, [
@@ -215,7 +286,7 @@
 
     clear(viewEl).appendChild(el("div", {}, [
       el("div", { class: "topbar" }, el("div", {}, [
-        el("h1", {}, "New Order"), el("div", { class: "meta" }, "Record a sale or custom order")])),
+        f.title, el("div", { class: "meta" }, "Record or edit a sale / custom order")])),
       el("div", { class: "card" }, el("div", { class: "card-body" }, [
         errorBanner,
         el("div", { class: "form-section-title" }, "Customer & order details"),
@@ -228,8 +299,9 @@
         ]),
         el("div", { class: "form-section-title" }, "Item components"),
         compTable,
-        el("button", { class: "add-row-btn", onclick: addRow }, "+ Add component"),
+        el("button", { class: "add-row-btn", onclick: () => addRow() }, "+ Add component"),
         el("div", { class: "form-section-title" }, "Pictures"),
+        existingSection,
         imgInput, thumbs,
         el("div", { class: "form-section-title" }, "Payment"),
         el("div", { class: "totals-box" }, [
@@ -241,14 +313,15 @@
         el("div", { class: "form-actions" }, [
           el("button", { class: "btn", onclick: reset }, "Cancel"),
           el("button", { class: "btn", onclick: () => save(true) }, "Save as Draft"),
-          el("button", { class: "btn btn-primary", onclick: () => save(false) }, "Save Order"),
+          f.saveBtn,
         ]),
       ])),
     ]));
     addRow();
     recompute();
+    setMode();
   }
 
   window.KhataViews = window.KhataViews || {};
-  window.KhataViews.entry = { mount };
+  window.KhataViews.entry = { mount, edit };
 })();

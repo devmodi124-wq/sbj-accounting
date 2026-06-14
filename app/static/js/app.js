@@ -116,6 +116,21 @@
     showApp(status.user);
   }
 
+  // Navigate to the New Order screen and load an existing order for editing.
+  window.KhataApp = {
+    async editOrder(id) {
+      document.querySelectorAll(".nav-item[data-view]").forEach((i) =>
+        i.classList.toggle("active", i.dataset.view === "entry"));
+      document.querySelectorAll(".view").forEach((v) =>
+        v.classList.toggle("active", v.id === "view-entry"));
+      if (!mounted.has("entry")) {
+        mounted.add("entry");
+        await window.KhataViews.entry.mount(document.getElementById("view-entry"));
+      }
+      await window.KhataViews.entry.edit(id);
+    },
+  };
+
   document.addEventListener("DOMContentLoaded", () => {
     $("auth-form").addEventListener("submit", submitAuth);
     wireNav();
