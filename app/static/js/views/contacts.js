@@ -9,10 +9,12 @@
 
     async function load() {
       const q = searchInput.value.trim();
-      const rows = await api.get(opts.endpoint + (q ? `?q=${encodeURIComponent(q)}` : ""));
+      const params = new URLSearchParams({ include_inactive: "true" });
+      if (q) params.set("q", q);
+      const rows = await api.get(`${opts.endpoint}?${params.toString()}`);
       clear(tbody);
       if (!rows.length) {
-        tbody.appendChild(el("tr", {}, el("td", { colspan: "4", class: "muted" }, "No records.")));
+        tbody.appendChild(el("tr", {}, el("td", { colspan: "5", class: "muted" }, "No records.")));
       }
       const isAdmin = window.KhataUser && window.KhataUser.role === "admin";
       for (const r of rows) {
@@ -21,8 +23,13 @@
             el("td", {}, r.name),
             el("td", {}, r.phone || "—"),
             el("td", {}, r.address || "—"),
+            el("td", {}, r.is_active
+              ? el("span", { class: "pill pill-green" }, "Active")
+              : el("span", { class: "pill pill-muted" }, "Inactive")),
             el("td", {}, [
               el("button", { class: "btn btn-sm", onclick: () => edit(r) }, "Edit"),
+              el("button", { class: "btn btn-sm", style: "margin-left:6px;", onclick: () => toggleActive(r) },
+                r.is_active ? "Deactivate" : "Activate"),
               isAdmin ? el("button", {
                 class: "btn btn-sm",
                 style: "margin-left:6px;border-color:var(--red);color:var(--red);",
@@ -31,6 +38,16 @@
             ]),
           ])
         );
+      }
+    }
+
+    async function toggleActive(r) {
+      try {
+        await api.post(`${opts.endpoint}/${r.id}/active`, { is_active: !r.is_active });
+        toast(r.is_active ? "Deactivated." : "Activated.");
+        load();
+      } catch (e) {
+        toast(errorText(e), "error");
       }
     }
 
@@ -104,7 +121,7 @@
         el("div", { class: "card" }, el("div", { class: "card-body" }, [
           el("div", { class: "filter-bar" }, searchInput),
           el("div", { class: "table-scroll" }, el("table", {}, [
-            el("thead", {}, el("tr", {}, [th("Name"), th("Phone"), th("Address"), th("")])),
+            el("thead", {}, el("tr", {}, [th("Name"), th("Phone"), th("Address"), th("Status"), th("")])),
             tbody,
           ])),
         ])),

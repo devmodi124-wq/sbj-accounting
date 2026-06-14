@@ -32,9 +32,11 @@ def _find_match(session: Session, model, name: str):
     )
 
 
-def _search(session: Session, model, query: str, limit: int):
+def _search(session: Session, model, query: str, limit: int, include_inactive: bool = False):
     q = (query or "").strip().lower()
     stmt = session.query(model)
+    if not include_inactive:
+        stmt = stmt.filter(model.is_active.is_(True))
     if q:
         like = f"%{q}%"
         stmt = stmt.filter(func.lower(model.name).like(like))
@@ -50,8 +52,10 @@ def find_customer_match(session: Session, name: str) -> Optional[Customer]:
     return _find_match(session, Customer, name)
 
 
-def search_customers(session: Session, query: str, limit: int = 10) -> list[Customer]:
-    return _search(session, Customer, query, limit)
+def search_customers(
+    session: Session, query: str, limit: int = 10, include_inactive: bool = False
+) -> list[Customer]:
+    return _search(session, Customer, query, limit, include_inactive)
 
 
 def get_or_create_customer(
@@ -73,8 +77,10 @@ def find_party_match(session: Session, name: str) -> Optional[Party]:
     return _find_match(session, Party, name)
 
 
-def search_parties(session: Session, query: str, limit: int = 10) -> list[Party]:
-    return _search(session, Party, query, limit)
+def search_parties(
+    session: Session, query: str, limit: int = 10, include_inactive: bool = False
+) -> list[Party]:
+    return _search(session, Party, query, limit, include_inactive)
 
 
 def get_or_create_party(

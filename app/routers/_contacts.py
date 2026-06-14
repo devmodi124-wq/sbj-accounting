@@ -4,11 +4,16 @@ from __future__ import annotations
 from typing import Callable
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.auth.deps import get_current_user, get_db, require_admin
 from app.models import User
 from app.schemas.masters import ContactIn, ContactOut
+
+
+class ActiveIn(BaseModel):
+    is_active: bool
 
 
 def build_contact_router(
@@ -20,10 +25,11 @@ def build_contact_router(
     def list_contacts(
         q: str = "",
         limit: int = 20,
+        include_inactive: bool = False,
         db: Session = Depends(get_db),
         _user: User = Depends(get_current_user),
     ):
-        return search_fn(db, q, limit)
+        return search_fn(db, q, limit, include_inactive)
 
     @router.post("", response_model=ContactOut, status_code=status.HTTP_201_CREATED)
     def create_contact(
@@ -60,6 +66,21 @@ def build_contact_router(
             raise HTTPException(status.HTTP_404_NOT_FOUND, "not_found")
         for key, value in payload.model_dump().items():
             setattr(obj, key, value)
+        db.commit()
+        db.refresh(obj)
+        return obj
+
+    @router.post("/{obj_id}/active", response_model=ContactOut)
+    def set_active(
+        obj_id: int,
+        payload: ActiveIn,
+        db: Session = Depends(get_db),
+        _user: User = Depends(get_current_user),
+    ):
+        obj = db.get(model, obj_id)
+        if obj is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "not_found")
+        obj.is_active = payload.is_active
         db.commit()
         db.refresh(obj)
         return obj

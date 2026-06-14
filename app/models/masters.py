@@ -16,6 +16,7 @@ class Customer(TimestampMixin, Base):
     phone: Mapped[str | None] = mapped_column(String(32))
     address: Mapped[str | None] = mapped_column(Text)
     notes: Mapped[str | None] = mapped_column(Text)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
 
 
@@ -29,6 +30,7 @@ class Party(TimestampMixin, Base):
     phone: Mapped[str | None] = mapped_column(String(32))
     address: Mapped[str | None] = mapped_column(Text)
     notes: Mapped[str | None] = mapped_column(Text)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
 
 

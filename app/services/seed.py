@@ -98,6 +98,13 @@ def _migrate_schema(engine: Engine) -> None:
         for column, decl in _V2_ORDER_COLUMNS.items():
             if column not in existing:
                 conn.exec_driver_sql(f"ALTER TABLE orders ADD COLUMN {column} {decl}")
+        # v3: soft-deactivate flag on customers/parties.
+        for table in ("customers", "parties"):
+            cols = {row[1] for row in conn.exec_driver_sql(f"PRAGMA table_info({table})")}
+            if "is_active" not in cols:
+                conn.exec_driver_sql(
+                    f"ALTER TABLE {table} ADD COLUMN is_active BOOLEAN NOT NULL DEFAULT 1"
+                )
 
 
 def initialize_database(engine: Engine) -> None:

@@ -70,6 +70,33 @@ def test_delete_requires_admin(admin_client):
     assert emp.delete(f"/api/customers/{cid}").status_code == 403
 
 
+def test_deactivate_hides_from_search_but_keeps_record(admin_client):
+    cid = admin_client.post("/api/customers", json={"name": "Old Customer"}).json()["id"]
+    # deactivate
+    r = admin_client.post(f"/api/customers/{cid}/active", json={"is_active": False})
+    assert r.status_code == 200 and r.json()["is_active"] is False
+
+    # default search (New Order type-ahead) excludes inactive
+    active = admin_client.get("/api/customers", params={"q": "old customer"}).json()
+    assert all(c["id"] != cid for c in active)
+
+    # management view includes inactive
+    allrows = admin_client.get("/api/customers", params={"q": "old customer", "include_inactive": True}).json()
+    assert any(c["id"] == cid for c in allrows)
+
+    # record still fetchable, and reactivation works
+    assert admin_client.get(f"/api/customers/{cid}").status_code == 200
+    admin_client.post(f"/api/customers/{cid}/active", json={"is_active": True})
+    reactivated = admin_client.get("/api/customers", params={"q": "old customer"}).json()
+    assert any(c["id"] == cid for c in reactivated)
+
+
+def test_party_deactivate(admin_client):
+    pid = admin_client.post("/api/parties", json={"name": "Old Supp"}).json()["id"]
+    admin_client.post(f"/api/parties/{pid}/active", json={"is_active": False})
+    assert all(p["id"] != pid for p in admin_client.get("/api/parties", params={"q": "old supp"}).json())
+
+
 # ===== Lookups =====
 
 def test_component_types_seeded_and_active_filter(admin_client):

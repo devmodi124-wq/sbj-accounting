@@ -21,6 +21,7 @@ class ContactOut(BaseModel):
     phone: str | None
     address: str | None
     notes: str | None
+    is_active: bool = True
 
 
 # ===== Lookup types (component_types, purity_types) =====
