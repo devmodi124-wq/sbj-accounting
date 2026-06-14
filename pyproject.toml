@@ -1,0 +1,9 @@
+[project]
+name = "khata"
+version = "0.1.0"
+description = "Offline jewellery-shop accounting app for Sahibabad Jewellers"
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

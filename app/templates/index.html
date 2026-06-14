@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Khata — Sahibabad Jewellers</title>
+<link rel="stylesheet" href="/static/css/fonts.css">
+<link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="mark">Khata</div>
+      <div class="sub">Sahibabad Jewellers</div>
+    </div>
+
+    <div class="nav-section">Work</div>
+    <button class="nav-item active" data-view="entry"><span class="icon">&#9998;</span> New Order</button>
+    <button class="nav-item" data-view="dashboard"><span class="icon">&#9638;</span> Dashboard</button>
+
+    <div class="nav-section">Reports</div>
+    <button class="nav-item" data-view="debtors"><span class="icon">&#8377;</span> Debtors</button>
+    <button class="nav-item" data-view="sales"><span class="icon">&#8857;</span> Sales</button>
+    <button class="nav-item" data-view="stock"><span class="icon">&#8863;</span> Order / Stock</button>
+    <button class="nav-item" data-view="creditors"><span class="icon">&#8862;</span> Creditors</button>
+    <button class="nav-item" data-view="purchases"><span class="icon">&#8864;</span> Purchases</button>
+    <button class="nav-item" data-view="customers"><span class="icon">&#9783;</span> Customers</button>
+    <button class="nav-item" data-view="ledgers"><span class="icon">&#8801;</span> Ledgers</button>
+
+    <div class="nav-section">System</div>
+    <button class="nav-item" data-view="settings"><span class="icon">&#9881;</span> Settings</button>
+
+    <div class="sidebar-footer">
+      <div class="user-chip">
+        <div class="user-avatar" id="userAvatar">&middot;</div>
+        <div>
+          <div class="user-name" id="userName">—</div>
+          <div class="user-role" id="userRole">offline</div>
+        </div>
+      </div>
+      Working offline &middot; all data on this device
+    </div>
+  </aside>
+
+  <main class="main" id="main">
+    <div class="view active" id="view-entry">
+      <div class="topbar"><div><h1>Khata</h1><div class="meta">Scaffolding ready — screens are built in later phases.</div></div></div>
+      <div class="card"><div class="card-body muted">
+        Phase&nbsp;0 shell. The application UI (New Order, Dashboard, Reports&hellip;) renders here as each phase lands.
+      </div></div>
+    </div>
+  </main>
+</div>
+
+<script src="/static/js/app.js"></script>
+</body>
+</html>

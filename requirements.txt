@@ -1,0 +1,27 @@
+# Khata — Python dependencies
+#
+# NOTE on sqlcipher3: there is no prebuilt wheel for macOS/arm64, so it is built
+# from source against the Homebrew sqlcipher library. Before `pip install`, run:
+#
+#   brew install sqlcipher
+#   export PKG_CONFIG_PATH="$(brew --prefix sqlcipher)/lib/pkgconfig:$(brew --prefix openssl@3)/lib/pkgconfig"
+#   export C_INCLUDE_PATH="$(brew --prefix sqlcipher)/include:$(brew --prefix sqlcipher)/include/sqlcipher"
+#   export LDFLAGS="-L$(brew --prefix sqlcipher)/lib -L$(brew --prefix openssl@3)/lib"
+#   export CPPFLAGS="-I$(brew --prefix sqlcipher)/include -I$(brew --prefix sqlcipher)/include/sqlcipher -I$(brew --prefix openssl@3)/include"
+#
+# (See scripts/install_sqlcipher.sh which automates this.)
+
+fastapi>=0.110
+uvicorn[standard]>=0.29
+SQLAlchemy>=2.0
+sqlcipher3
+pydantic>=2.6
+passlib[bcrypt]>=1.7
+cryptography>=42.0
+openpyxl>=3.1
+python-multipart>=0.0.9
+itsdangerous>=2.1
+
+# dev/test
+pytest>=8.0
+httpx>=0.27
