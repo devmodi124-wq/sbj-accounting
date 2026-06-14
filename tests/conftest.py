@@ -51,6 +51,8 @@ def client(tmp_path, monkeypatch):
     from fastapi.testclient import TestClient
 
     monkeypatch.setenv("KHATA_DATA_DIR", str(tmp_path / "data"))
+    # Keep the optional config file out of the repo during tests.
+    monkeypatch.setenv("KHATA_CONFIG_FILE", str(tmp_path / "khata.config.json"))
     # config caches settings via lru_cache; clear so the env override is read.
     import app.config as config
     from app.db import engine_state

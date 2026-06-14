@@ -11,6 +11,7 @@ khata-data/
 *.keys
 *.sealed
 backups/
+khata.config.json
 
 # ===== Python =====
 __pycache__/

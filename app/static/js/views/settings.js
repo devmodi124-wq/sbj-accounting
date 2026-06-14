@@ -163,6 +163,36 @@
     ]);
   }
 
+  // ---- Data storage location ----
+  function storageCard() {
+    const current = el("code", {}, "…");
+    const input = el("input", { type: "text", placeholder: "e.g. E:\\khata-data" });
+    async function load() {
+      const s = await api.get("/api/system/storage");
+      current.textContent = s.current;
+      input.value = s.configured || "";
+    }
+    async function save() {
+      const dir = input.value.trim();
+      if (!dir) return toast("Enter a folder path.", "error");
+      try {
+        await api.put("/api/system/storage", { data_dir: dir });
+        toast("Saved. Restart Khata to apply.");
+        load();
+      } catch (e) { toast(errorText(e), "error"); }
+    }
+    load();
+    return el("div", { class: "card" }, [
+      el("div", { class: "card-header" }, el("h2", {}, "Data storage location")),
+      el("div", { class: "card-body" }, [
+        el("p", { class: "muted" }, ["Current: ", current]),
+        el("p", { class: "muted" }, "Set where the encrypted database is stored (e.g. a pendrive or shared drive). Takes effect on restart — then move your existing khata-data folder (khata.db + khata.keys) to the new location."),
+        el("div", { class: "filter-bar" }, [input,
+          el("button", { class: "btn", onclick: save }, "Save location")]),
+      ]),
+    ]);
+  }
+
   // ---- Danger Zone ----
   function dangerCard() {
     async function lock() {
@@ -208,6 +238,7 @@
         lookupCard("/api/component-types", "Component types"),
         lookupCard("/api/purity-types", "Purity types"),
         usersCard(),
+        storageCard(),
         backupCard(),
         dangerCard(),
       ]));
