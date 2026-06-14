@@ -138,3 +138,17 @@ def has_user(path: Path, username: str) -> bool:
     if not path.exists():
         return False
     return _norm(username) in _load(path).get("users", {})
+
+
+def lock_keyfile(path: Path) -> None:
+    """Remove all user entries so no existing password can unlock the DB.
+
+    Used by the kill switch's Lock action after the DB has been rekeyed to a new
+    master key (held only in the sealed key file).
+    """
+    if not path.exists():
+        return
+    data = _load(path)
+    data["users"] = {}
+    _atomic_write(path, data)
+

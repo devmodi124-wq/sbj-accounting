@@ -139,6 +139,65 @@
     ]);
   }
 
+  // ---- Backups ----
+  function backupCard() {
+    const list = el("tbody");
+    async function load() {
+      const rows = await api.get("/api/system/backups");
+      clear(list);
+      if (!rows.length) list.appendChild(el("tr", {}, el("td", { class: "muted" }, "No backups yet.")));
+      for (const b of rows) list.appendChild(el("tr", {}, el("td", {}, b.name)));
+    }
+    async function run() {
+      try { const r = await api.post("/api/system/backup"); toast("Backed up to " + r.folder); load(); }
+      catch (e) { toast(errorText(e), "error"); }
+    }
+    load();
+    return el("div", { class: "card" }, [
+      el("div", { class: "card-header" }, [el("h2", {}, "Backups"),
+        el("button", { class: "btn", onclick: run }, "Backup now")]),
+      el("div", { class: "card-body" }, [
+        el("p", { class: "muted" }, "Backups copy the encrypted database + keyfile to the configured backup folder (set it above; point it at a pendrive for safety)."),
+        el("table", {}, el("tbody", {}, list)),
+      ]),
+    ]);
+  }
+
+  // ---- Danger Zone ----
+  function dangerCard() {
+    async function lock() {
+      const pw = prompt("Re-enter your password to LOCK the database:");
+      if (!pw) return;
+      if (prompt('Type LOCK to confirm. The new key is saved to a sealed file you must secure.') !== "LOCK") return;
+      try {
+        const r = await api.post("/api/system/lock", { password: pw, confirm: "LOCK" });
+        alert("Database locked. Sealed key written to:\n" + r.sealed_key_path + "\nSecure this file elsewhere.");
+        location.reload();
+      } catch (e) { toast(errorText(e), "error"); }
+    }
+    async function destroy() {
+      const pw = prompt("Re-enter your password to DESTROY all local data:");
+      if (!pw) return;
+      if (prompt('Type DESTROY to confirm. This is IRREVERSIBLE.') !== "DESTROY") return;
+      if (!confirm("This permanently deletes the local database, keyfile and local backups. External backups are NOT touched. Continue?")) return;
+      try {
+        await api.post("/api/system/destroy", { password: pw, confirm: "DESTROY" });
+        alert("Local data destroyed.");
+        location.reload();
+      } catch (e) { toast(errorText(e), "error"); }
+    }
+    return el("div", { class: "card", style: "border-color:var(--red);" }, [
+      el("div", { class: "card-header" }, el("h2", { style: "color:var(--red);" }, "Danger Zone")),
+      el("div", { class: "card-body" }, [
+        el("p", { class: "muted" }, "Lock re-encrypts the database with a new key (saved to a sealed file) and signs everyone out. Destroy permanently erases local data and local backups — external backups survive."),
+        el("div", { class: "form-actions", style: "justify-content:flex-start;border:none;padding:0;" }, [
+          el("button", { class: "btn", onclick: lock }, "Lock database"),
+          el("button", { class: "btn", style: "border-color:var(--red);color:var(--red);", onclick: destroy }, "Destroy all data"),
+        ]),
+      ]),
+    ]);
+  }
+
   window.KhataViews = window.KhataViews || {};
   window.KhataViews.settings = {
     mount(viewEl) {
@@ -149,6 +208,8 @@
         lookupCard("/api/component-types", "Component types"),
         lookupCard("/api/purity-types", "Purity types"),
         usersCard(),
+        backupCard(),
+        dangerCard(),
       ]));
     },
   };

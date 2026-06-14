@@ -26,6 +26,7 @@ from app.routers import parties as parties_router
 from app.routers import purchases as purchases_router
 from app.routers import reports as reports_router
 from app.routers import settings as settings_router
+from app.routers import system as system_router
 from app.routers import users as users_router
 
 APP_DIR = Path(__file__).resolve().parent
@@ -54,6 +55,7 @@ app.include_router(dashboard_router.router)
 app.include_router(reports_router.router)
 app.include_router(ledgers_router.router)
 app.include_router(import_router.router)
+app.include_router(system_router.router)
 app.include_router(lookups_router.component_types)
 app.include_router(lookups_router.purity_types)
 app.include_router(users_router.router)
