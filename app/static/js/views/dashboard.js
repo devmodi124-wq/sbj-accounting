@@ -91,9 +91,9 @@
             ])))),
         ]),
         el("div", { class: "card" }, [
-          el("div", { class: "card-header" }, el("h2", {}, "Sales by component")),
-          el("div", { class: "card-body", style: "padding:0;" }, table(["Component", "Total"],
-            d.sales_by_component.map((c) => el("tr", {}, [el("td", {}, c.name), el("td", { class: "amount num" }, money(c.total))])))),
+          el("div", { class: "card-header" }, el("h2", {}, "Sales by category")),
+          el("div", { class: "card-body", style: "padding:0;" }, table(["Category", "Total"],
+            d.sales_by_category.map((c) => el("tr", {}, [el("td", {}, c.name), el("td", { class: "amount num" }, money(c.total))])))),
         ]),
       ]),
     ]));

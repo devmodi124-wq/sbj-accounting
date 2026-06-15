@@ -25,5 +25,9 @@ class CashEntry(TimestampMixin, Base):
         Enum(CashEntryType, native_enum=False, length=16), nullable=False
     )
     amount: Mapped[Decimal] = mapped_column(Money, nullable=False)
+    # When set, this entry mirrors a sale's cash payment and is owned by that order
+    # (recreated whenever the order is saved). Manual entries leave these unset.
+    order_id: Mapped[int | None] = mapped_column(ForeignKey("orders.id", ondelete="SET NULL"))
+    auto_generated: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     is_backdated: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)

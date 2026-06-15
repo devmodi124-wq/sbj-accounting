@@ -8,26 +8,22 @@ from app.services.dateranges import last_n_months, resolve_range
 TODAY = date.today().isoformat()
 
 
-def _comp(client):
-    return [t["id"] for t in client.get("/api/component-types").json()]
-
-
 def _seed(client):
-    comps = _comp(client)
     cat = client.get("/api/item-categories").json()[0]["id"]
+    # Payments use UPI so they don't add to Cash-in-Hand (kept manual below).
     # Order 1: total 40000, received 10000 -> balance 30000 (customer A)
     client.post("/api/orders", json={
-        "customer_name": "Cust A", "order_date": TODAY,
-        "status": "delivered", "payment_received": "10000",
+        "customer_name": "Cust A", "order_date": TODAY, "status": "delivered",
+        "payments": [{"mode": "upi", "amount": "10000"}],
         "items": [{"item_category_id": cat, "item_name": "Ring",
-                   "components": [{"component_type_id": comps[0], "price": "40000"}]}],
+                   "gross_weight": "10", "metal_rate": "4000"}],   # 40000
     })
     # Order 2: total 20000, received 20000 -> balance 0 (customer B), pending status
     client.post("/api/orders", json={
-        "customer_name": "Cust B", "order_date": TODAY,
-        "status": "pending", "payment_received": "20000",
+        "customer_name": "Cust B", "order_date": TODAY, "status": "pending",
+        "payments": [{"mode": "upi", "amount": "20000"}],
         "items": [{"item_category_id": cat, "item_name": "Chain",
-                   "components": [{"component_type_id": comps[1], "price": "20000"}]}],
+                   "gross_weight": "5", "metal_rate": "4000"}],    # 20000
     })
     # Cash: +5000 received, -2000 paid
     client.post("/api/cash", json={"entry_date": TODAY, "entry_type": "received", "amount": "5000"})
@@ -81,8 +77,8 @@ def test_dashboard_pending_and_breakdowns(admin_client):
     assert len(d["sales_trend"]) == 12
     names = [c["name"] for c in d["top_customers"]]
     assert names[0] == "Cust A"  # highest billed first
-    comp_total = {c["name"]: c["total"] for c in d["sales_by_component"]}
-    assert comp_total  # has component breakdown
+    cat_total = {c["name"]: c["total"] for c in d["sales_by_category"]}
+    assert cat_total  # has category breakdown
 
 
 def test_cash_in_hand_includes_opening_balance(admin_client):

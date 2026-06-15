@@ -24,7 +24,10 @@ MASTER_KEY_BYTES = 32
 # v3: customers/parties is_active (soft deactivate).
 # v4: multi-item orders — order_items becomes a *piece*, components move to
 #     order_components, images move per-piece; orders gain reference + source_id.
-SCHEMA_VERSION = 4
+# v5: per-item weights×rates pricing on order_items (gross/net wt, purity, metal/
+#     diamond/stone/others rates, labour_rate); split payments (order_payments);
+#     cash_entries gain order_id + auto_generated for auto cash-book mirroring.
+SCHEMA_VERSION = 5
 
 
 class Base(DeclarativeBase):

@@ -17,11 +17,10 @@ from sqlalchemy.orm import Session
 
 from app.models import (
     CashEntry,
-    ComponentType,
     ItemCategory,
     Order,
-    OrderComponent,
     OrderItem,
+    OrderPayment,
     OrderSource,
     Purchase,
     PurityType,
@@ -44,6 +43,11 @@ from app.services.matching import (
     get_or_create_customer,
     get_or_create_party,
 )
+from app.services.orders import compute_net_weight, compute_subtotal
+
+# Per-item weight/rate columns on the Orders sheet (carried onto the single piece).
+_WEIGHT_FIELDS = ("gross_weight", "diamond_weight", "stone_weight", "others_weight")
+_RATE_FIELDS = ("metal_rate", "diamond_rate", "stone_rate", "others_rate", "labour_rate")
 
 VALID_STATUS = {s.value for s in OrderStatus}
 VALID_PAYMENT = {m.value for m in PaymentMode}
@@ -99,7 +103,6 @@ def validate(session: Session, sheets: dict[str, list[dict]]) -> dict:
     def err(sheet, row, msg):
         errors.append({"sheet": sheet, "row": row, "message": msg})
 
-    components = {c.name.strip().lower() for c in session.query(ComponentType).all()}
     purities = {p.name.strip().lower() for p in session.query(PurityType).all()}
     categories = {c.name.strip().lower() for c in session.query(ItemCategory).all()}
     weight_types = {w.name.strip().lower() for w in session.query(WeightType).all()}
@@ -111,7 +114,6 @@ def validate(session: Session, sheets: dict[str, list[dict]]) -> dict:
             if not _s(row.get("name")):
                 err(label, i, "name is required")
 
-    order_refs: set[str] = set()
     for i, row in enumerate(sheets.get("Orders", []), start=2):
         if not _s(row.get("customer_name")):
             err("Orders", i, "customer_name is required")
@@ -126,6 +128,9 @@ def validate(session: Session, sheets: dict[str, list[dict]]) -> dict:
         ss = _s(row.get("supply_source")).lower()
         if ss and ss not in supply_sources:
             err("Orders", i, f"unknown supply_source '{row.get('supply_source')}'")
+        purity = _s(row.get("purity")).lower()
+        if purity and purity not in purities:
+            err("Orders", i, f"unknown purity '{row.get('purity')}'")
         src = _s(row.get("source")).lower()
         if src and src not in order_sources:
             err("Orders", i, f"unknown source '{row.get('source')}'")
@@ -137,26 +142,9 @@ def validate(session: Session, sheets: dict[str, list[dict]]) -> dict:
         mode = _s(row.get("payment_mode")).lower()
         if mode and mode not in VALID_PAYMENT:
             err("Orders", i, f"invalid payment_mode '{mode}'")
-        if _parse_decimal(row.get("payment_received")) is None:
-            err("Orders", i, "payment_received is not a number")
-        ref = _s(row.get("order_ref"))
-        if ref:
-            if ref in order_refs:
-                err("Orders", i, f"duplicate order_ref '{ref}'")
-            order_refs.add(ref)
-
-    for i, row in enumerate(sheets.get("Order Items", []), start=2):
-        ref = _s(row.get("order_ref"))
-        if not ref or ref not in order_refs:
-            err("Order Items", i, f"order_ref '{ref}' not found in Orders")
-        comp = _s(row.get("component_type")).lower()
-        if comp not in components:
-            err("Order Items", i, f"unknown component_type '{row.get('component_type')}'")
-        purity = _s(row.get("purity")).lower()
-        if purity and purity not in purities:
-            err("Order Items", i, f"unknown purity '{row.get('purity')}'")
-        if _parse_decimal(row.get("price")) is None:
-            err("Order Items", i, "price is not a number")
+        for fld in ("payment_received",) + _WEIGHT_FIELDS + _RATE_FIELDS:
+            if _parse_decimal(row.get(fld)) is None:
+                err("Orders", i, f"{fld} is not a number")
 
     for i, row in enumerate(sheets.get("Cash Entries", []), start=2):
         if _parse_date(row.get("date")) is None:
@@ -194,13 +182,12 @@ def validate(session: Session, sheets: dict[str, list[dict]]) -> dict:
 def commit(session: Session, user: User, sheets: dict[str, list[dict]], today: Optional[date] = None) -> dict:
     """Apply a validated import in one transaction. Raises on error (rolled back)."""
     today = today or date.today()
-    comp_by_name = {c.name.strip().lower(): c for c in session.query(ComponentType).all()}
     purity_by_name = {p.name.strip().lower(): p for p in session.query(PurityType).all()}
     category_by_name = {c.name.strip().lower(): c for c in session.query(ItemCategory).all()}
     weight_by_name = {w.name.strip().lower(): w for w in session.query(WeightType).all()}
     supply_by_name = {s.name.strip().lower(): s for s in session.query(SupplySource).all()}
     source_by_name = {s.name.strip().lower(): s for s in session.query(OrderSource).all()}
-    counts = {"customers": 0, "parties": 0, "orders": 0, "order_items": 0,
+    counts = {"customers": 0, "parties": 0, "orders": 0,
               "cash_entries": 0, "purchases": 0, "opening_balances": 0}
 
     try:
@@ -219,16 +206,17 @@ def commit(session: Session, user: User, sheets: dict[str, list[dict]], today: O
                 party.notes = _s(row.get("notes")) or None
                 counts["parties"] += 1
 
-        # Each imported order becomes a single piece (item) carrying the row's
-        # item fields; its component rows (Order Items sheet) attach to that piece.
-        ref_to_order: dict[str, Order] = {}
-        ref_to_piece: dict[str, OrderItem] = {}
+        # Each imported order becomes a single piece (item) priced from its
+        # weights×rates. A single payment line is recorded from amount + mode.
         for row in sheets.get("Orders", []):
             customer, _ = get_or_create_customer(session, _s(row.get("customer_name")), created_by=user.id)
             order_date = _parse_date(row.get("order_date"))
             wt = _s(row.get("weight_type")).lower()
             ss = _s(row.get("supply_source")).lower()
+            pu = _s(row.get("purity")).lower()
             src = _s(row.get("source")).lower()
+            mode = _s(row.get("payment_mode")).lower()
+            received = _parse_decimal(row.get("payment_received")) or Decimal("0")
             order = Order(
                 customer_id=customer.id,
                 order_date=order_date,
@@ -237,8 +225,8 @@ def commit(session: Session, user: User, sheets: dict[str, list[dict]], today: O
                 reference=_s(row.get("reference")) or None,
                 source_id=source_by_name[src].id if src else None,
                 status=OrderStatus(_s(row.get("status")).lower() or "pending"),
-                payment_received=_parse_decimal(row.get("payment_received")) or Decimal("0"),
-                payment_mode=PaymentMode(_s(row.get("payment_mode")).lower()) if _s(row.get("payment_mode")) else None,
+                payment_received=received,
+                payment_mode=PaymentMode(mode) if mode else None,
                 created_by=user.id,
                 is_backdated=order_date < today if order_date else False,
                 total_amount=Decimal("0"),
@@ -252,46 +240,32 @@ def commit(session: Session, user: User, sheets: dict[str, list[dict]], today: O
                 item_name=_s(row.get("item_name")) or None,
                 weight_type_id=weight_by_name[wt].id if wt else None,
                 supply_source_id=supply_by_name[ss].id if ss else None,
-                subtotal=Decimal("0"),
+                purity_type_id=purity_by_name[pu].id if pu else None,
+                gross_weight=_parse_decimal(row.get("gross_weight")) or None,
+                diamond_weight=_parse_decimal(row.get("diamond_weight")) or None,
+                stone_weight=_parse_decimal(row.get("stone_weight")) or None,
+                others_weight=_parse_decimal(row.get("others_weight")) or None,
+                metal_rate=_parse_decimal(row.get("metal_rate")) or None,
+                diamond_rate=_parse_decimal(row.get("diamond_rate")) or None,
+                stone_rate=_parse_decimal(row.get("stone_rate")) or None,
+                others_rate=_parse_decimal(row.get("others_rate")) or None,
+                labour_rate=_parse_decimal(row.get("labour_rate")) or None,
                 sort_order=0,
             )
+            net = compute_net_weight(piece)
+            piece.net_weight = net
+            piece.subtotal = compute_subtotal(piece, net)
             session.add(piece)
-            session.flush()
+            if received > 0:
+                session.add(OrderPayment(
+                    order_id=order.id,
+                    mode=PaymentMode(mode) if mode else PaymentMode.cash,
+                    amount=received,
+                    sort_order=0,
+                ))
+            order.total_amount = piece.subtotal
+            order.balance = piece.subtotal - received
             counts["orders"] += 1
-            ref = _s(row.get("order_ref"))
-            if ref:
-                ref_to_order[ref] = order
-                ref_to_piece[ref] = piece
-
-        order_index: dict[int, int] = {}
-        for row in sheets.get("Order Items", []):
-            piece = ref_to_piece.get(_s(row.get("order_ref")))
-            if piece is None:
-                continue
-            idx = order_index.get(piece.id, 0)
-            order_index[piece.id] = idx + 1
-            comp = comp_by_name[_s(row.get("component_type")).lower()]
-            purity_name = _s(row.get("purity")).lower()
-            session.add(OrderComponent(
-                order_item_id=piece.id,
-                component_type_id=comp.id,
-                pcs=int(row["pcs"]) if _s(row.get("pcs")).isdigit() else None,
-                weight=_parse_decimal(row.get("weight")) if _s(row.get("weight")) else None,
-                purity_type_id=purity_by_name[purity_name].id if purity_name else None,
-                rate=_parse_decimal(row.get("rate")) if _s(row.get("rate")) else None,
-                price=_parse_decimal(row.get("price")) or Decimal("0"),
-                sort_order=idx,
-            ))
-            counts["order_items"] += 1
-
-        # Recompute piece subtotals and order totals from their imported components.
-        session.flush()
-        for ref, order in ref_to_order.items():
-            piece = ref_to_piece[ref]
-            subtotal = sum((c.price for c in piece.components), Decimal("0"))
-            piece.subtotal = subtotal
-            order.total_amount = subtotal
-            order.balance = subtotal - order.payment_received
 
         for row in sheets.get("Cash Entries", []):
             person = _s(row.get("person_name"))

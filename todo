@@ -1,0 +1,16 @@
+[x] Per-item weights×rates pricing (v1.1.0)
+    Gw - total weight of jewellery (g)
+    Nw- calculates automatically via formula
+    Gw- (dw+sw+other item)/5
+    Dw- in carat
+    Sw- in carat
+    Others- in carat
+    L- nw x price/rate
+    Gross weight net weight - diamon- stone - others
+    Net weight is metal weight
+    It should be calculated automically
+
+[] Add more appropriate drop down filters on all reports.
+[] Export of reports must include all relevant fields.
+[] Export if possible must include picture of the product.
+[x] Sales entry should have the option of cash recieved. Automatic cash received entry (v1.1.0)

@@ -31,11 +31,9 @@ GOOD = {
     "Customers": [{"name": "Imp Cust", "phone": "123"}],
     "Orders": [{"order_ref": "O1", "customer_name": "Imp Cust", "order_date": "2026-06-01",
                 "item_category": "Ring", "item_name": "Ladies ring", "weight_type": "Normal",
-                "supply_source": "On Order", "status": "delivered", "payment_received": "500"}],
-    "Order Items": [
-        {"order_ref": "O1", "component_type": "Round (RND)", "price": "1000", "purity": "22 KT"},
-        {"order_ref": "O1", "component_type": "Labour", "price": "200"},
-    ],
+                "supply_source": "On Order", "purity": "22 KT", "gross_weight": "1200",
+                "metal_rate": "1", "status": "delivered", "payment_received": "500",
+                "payment_mode": "cash"}],
     "Cash Entries": [{"date": "2026-06-02", "person_name": "Imp Cust", "type": "received", "amount": "300"}],
     "Purchases": [{"date": "2026-06-03", "party_name": "Imp Supp", "amount": "5000", "amount_paid": "1000"}],
     "Opening Balances": [{"entity_type": "customer", "entity_name": "Imp Cust",
@@ -48,7 +46,7 @@ def test_template_download(admin_client):
     assert r.status_code == 200
     wb = load_workbook(io.BytesIO(r.content))
     assert "Instructions" in wb.sheetnames
-    assert "Order Items" in wb.sheetnames
+    assert "Orders" in wb.sheetnames
 
 
 def test_validate_good_file(admin_client):
@@ -62,8 +60,8 @@ def test_validate_good_file(admin_client):
 def test_validate_reports_errors(admin_client):
     bad = {
         "Orders": [{"order_ref": "O1", "customer_name": "", "order_date": "nope",
-                    "item_name": "", "status": "weird", "payment_received": "x"}],
-        "Order Items": [{"order_ref": "MISSING", "component_type": "Nope", "price": "abc"}],
+                    "item_name": "", "status": "weird", "payment_received": "x",
+                    "gross_weight": "notnum"}],
     }
     body = _upload(admin_client, "/api/import/validate", make_xlsx(bad)).json()
     assert body["ok"] is False
@@ -71,8 +69,8 @@ def test_validate_reports_errors(admin_client):
     assert "customer_name is required" in msgs
     assert "item_category is required" in msgs
     assert "order_date" in msgs
-    assert "unknown component_type" in msgs
-    assert "not found in Orders" in msgs
+    assert "payment_received is not a number" in msgs
+    assert "gross_weight is not a number" in msgs
 
 
 def test_commit_imports_everything(admin_client):
@@ -80,10 +78,9 @@ def test_commit_imports_everything(admin_client):
     assert r.status_code == 200
     imported = r.json()["imported"]
     assert imported["orders"] == 1
-    assert imported["order_items"] == 2
     assert imported["purchases"] == 1
 
-    # Order total recomputed from items (1000 + 200) and balance (1200 - 500).
+    # Order priced from gross 1200 × metal_rate 1 = 1200; balance 1200 - 500.
     orders = admin_client.get("/api/orders").json()
     assert orders[0]["total_amount"] == "1200.00"
     assert orders[0]["balance"] == "700.00"
@@ -104,8 +101,8 @@ def test_commit_reuses_existing_customer(admin_client):
     admin_client.post("/api/customers", json={"name": "Existing Cust"})
     data = {
         "Orders": [{"order_ref": "X1", "customer_name": "  existing cust ", "order_date": "2026-06-01",
-                    "item_category": "Ring", "status": "pending", "payment_received": "0"}],
-        "Order Items": [{"order_ref": "X1", "component_type": "Round (RND)", "price": "100"}],
+                    "item_category": "Ring", "status": "pending", "gross_weight": "100",
+                    "metal_rate": "1", "payment_received": "0"}],
     }
     _upload(admin_client, "/api/import/commit", make_xlsx(data))
     matches = admin_client.get("/api/customers", params={"q": "existing cust"}).json()

@@ -19,8 +19,8 @@ from app.models import Customer, Order, Party, Purchase
 from app.models.base import OrderStatus
 from app.services.orders import (
     categories_label,
-    component_count,
     item_names_label,
+    payment_modes_label,
 )
 
 ZERO = Decimal("0")
@@ -110,8 +110,11 @@ def sales_report(
             "item_category": categories_label(o),
             "item_name": item_names_label(o),
             "item_count": len(o.items),
+            "source": o.source.name if o.source else "",
+            "reference": o.reference or "",
             "total_amount": _money(o.total_amount),
             "payment_received": _money(o.payment_received),
+            "payment_modes": payment_modes_label(o),
             "balance": _money(o.balance),
             "status": o.status.value,
         })
@@ -151,7 +154,6 @@ def order_stock_report(
             "item_category": categories_label(o),
             "item_name": item_names_label(o),
             "item_count": len(o.items),
-            "components": component_count(o),
             "status": o.status.value,
             "days_pending": days_pending,
         })
@@ -350,10 +352,11 @@ def customer_report(
 # Column definitions for CSV export, keyed by report name.
 CSV_COLUMNS = {
     "sales": [("order_date", "Date"), ("customer_name", "Customer"), ("item_category", "Category"),
-              ("item_name", "Item"), ("item_count", "Items"), ("total_amount", "Total"),
-              ("payment_received", "Received"), ("balance", "Balance"), ("status", "Status")],
+              ("item_name", "Item"), ("item_count", "Items"), ("source", "Source"),
+              ("reference", "Reference"), ("total_amount", "Total"), ("payment_received", "Received"),
+              ("payment_modes", "Modes"), ("balance", "Balance"), ("status", "Status")],
     "stock": [("order_date", "Date"), ("customer_name", "Customer"), ("item_category", "Category"),
-              ("item_name", "Item"), ("item_count", "Items"), ("components", "Components"),
+              ("item_name", "Item"), ("item_count", "Items"),
               ("status", "Status"), ("days_pending", "Days pending")],
     "debtors": [("name", "Customer"), ("phone", "Phone"), ("billed", "Total billed"),
                 ("received", "Received"), ("balance", "Balance"), ("last_txn", "Last txn"),

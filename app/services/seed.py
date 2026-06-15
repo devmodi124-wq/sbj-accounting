@@ -127,6 +127,18 @@ def _migrate_pre_create(engine: Engine) -> None:
             # v4 order-level columns (fresh DBs get these from create_all).
             _add_column(conn, "orders", "reference", "TEXT")
             _add_column(conn, "orders", "source_id", "INTEGER")
+        if "order_items" in tables and not _is_legacy_orders(conn):
+            # v5 per-item weights×rates pricing columns (skip a legacy components
+            # table — that is renamed aside below and rebuilt by create_all).
+            for col in ("gross_weight", "diamond_weight", "stone_weight",
+                        "others_weight", "net_weight", "metal_rate", "diamond_rate",
+                        "stone_rate", "others_rate", "labour_rate"):
+                _add_column(conn, "order_items", col, "NUMERIC")
+            _add_column(conn, "order_items", "purity_type_id", "INTEGER")
+        if "cash_entries" in tables:
+            # v5 cash-book mirroring of a sale's cash payment.
+            _add_column(conn, "cash_entries", "order_id", "INTEGER")
+            _add_column(conn, "cash_entries", "auto_generated", "BOOLEAN NOT NULL DEFAULT 0")
         if _is_legacy_orders(conn):
             # Ensure the legacy per-piece columns exist so the backfill can read
             # them (a pre-v2 database never had them).
@@ -147,22 +159,18 @@ def _migrate_post_create(engine: Engine) -> None:
     startup. Each pre-v4 order becomes a single piece carrying its item fields.
     """
     with engine.begin() as conn:
-        if "_legacy_order_items" not in _tables(conn):
+        tables = _tables(conn)
+        if "_legacy_order_items" not in tables:
             return
+        # One piece per legacy order, carrying its item fields; the per-item
+        # weights×rates (v5) start empty and the subtotal preserves the order total.
         conn.exec_driver_sql(
             "INSERT INTO order_items "
             "(order_id, item_name, item_category_id, weight_type_id, supply_source_id, subtotal, sort_order) "
             "SELECT id, item_name, item_category_id, weight_type_id, supply_source_id, total_amount, 0 "
             "FROM orders WHERE id NOT IN (SELECT order_id FROM order_items)"
         )
-        conn.exec_driver_sql(
-            "INSERT INTO order_components "
-            "(order_item_id, component_type_id, pcs, weight, purity_type_id, rate, price, sort_order) "
-            "SELECT p.id, c.component_type_id, c.pcs, c.weight, c.purity_type_id, c.rate, c.price, c.sort_order "
-            "FROM _legacy_order_items c JOIN order_items p ON p.order_id = c.order_id"
-        )
-        conn.exec_driver_sql("DROP TABLE _legacy_order_items")
-        if "_legacy_order_images" in _tables(conn):
+        if "_legacy_order_images" in tables:
             conn.exec_driver_sql(
                 "INSERT INTO order_images "
                 "(order_item_id, filename, mime, data, sort_order, created_at) "
@@ -170,6 +178,26 @@ def _migrate_post_create(engine: Engine) -> None:
                 "FROM _legacy_order_images i JOIN order_items p ON p.order_id = i.order_id"
             )
             conn.exec_driver_sql("DROP TABLE _legacy_order_images")
+        # The pre-v4 component rows are no longer modelled (pricing moved to the
+        # weights×rates panel). Preserve them as an orphan `order_components` table
+        # for record rather than discarding the data.
+        if "order_components" not in tables:
+            conn.exec_driver_sql("ALTER TABLE _legacy_order_items RENAME TO order_components")
+        else:
+            conn.exec_driver_sql("DROP TABLE _legacy_order_items")
+    _migrate_payments_backfill(engine)
+
+
+def _migrate_payments_backfill(engine: Engine) -> None:
+    """v5: seed one payment line per legacy order from its amount + mode."""
+    with engine.begin() as conn:
+        if "order_payments" not in _tables(conn) or "orders" not in _tables(conn):
+            return
+        conn.exec_driver_sql(
+            "INSERT INTO order_payments (order_id, mode, amount, sort_order) "
+            "SELECT id, COALESCE(payment_mode, 'cash'), payment_received, 0 FROM orders "
+            "WHERE payment_received > 0 AND id NOT IN (SELECT order_id FROM order_payments)"
+        )
 
 
 def initialize_database(engine: Engine) -> None:

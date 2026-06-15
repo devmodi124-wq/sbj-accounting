@@ -10,10 +10,9 @@ from sqlalchemy.orm import Session
 
 from app.models import (
     CashEntry,
-    ComponentType,
     Customer,
+    ItemCategory,
     Order,
-    OrderComponent,
     OrderItem,
     Purchase,
 )
@@ -125,18 +124,17 @@ def top_customers(session: Session, start: date, end: date, limit: int = 5) -> l
     ]
 
 
-def sales_by_component(session: Session, start: date, end: date) -> list[dict]:
+def sales_by_category(session: Session, start: date, end: date) -> list[dict]:
     rows = (
         session.query(
-            ComponentType.name,
-            func.coalesce(func.sum(OrderComponent.price), 0).label("total"),
+            ItemCategory.name,
+            func.coalesce(func.sum(OrderItem.subtotal), 0).label("total"),
         )
-        .join(OrderComponent, OrderComponent.component_type_id == ComponentType.id)
-        .join(OrderItem, OrderItem.id == OrderComponent.order_item_id)
+        .join(OrderItem, OrderItem.item_category_id == ItemCategory.id)
         .join(Order, Order.id == OrderItem.order_id)
         .filter(Order.order_date >= start, Order.order_date <= end)
-        .group_by(ComponentType.name)
-        .order_by(func.sum(OrderComponent.price).desc())
+        .group_by(ItemCategory.name)
+        .order_by(func.sum(OrderItem.subtotal).desc())
         .all()
     )
     return [{"name": r.name, "total": _money(r.total)} for r in rows]
@@ -162,5 +160,5 @@ def build_dashboard(
         "sales_trend": sales_trend(session, today),
         "pending_orders": pending_orders(session),
         "top_customers": top_customers(session, start, end),
-        "sales_by_component": sales_by_component(session, start, end),
+        "sales_by_category": sales_by_category(session, start, end),
     }

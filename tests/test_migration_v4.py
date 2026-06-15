@@ -20,7 +20,7 @@ def _downgrade_to_legacy(engine, customer_id, category_id, component_id):
     one legacy order + component + image."""
     with engine.begin() as conn:
         conn.exec_driver_sql("DROP TABLE order_images")
-        conn.exec_driver_sql("DROP TABLE order_components")
+        conn.exec_driver_sql("DROP TABLE order_payments")
         conn.exec_driver_sql("DROP TABLE order_items")
         conn.exec_driver_sql(
             "CREATE TABLE order_items ("
@@ -79,15 +79,17 @@ def test_v4_migration_preserves_order_data(encrypted_engine):
         assert piece.item_name == "Old Ring"
         assert piece.item_category_id == category_id
         assert piece.subtotal == Decimal("100")    # backfilled from order total
-        assert len(piece.components) == 1
-        assert piece.components[0].price == Decimal("100")
-        assert piece.components[0].component_type_id == component_id
         assert len(piece.images) == 1
         assert piece.images[0].filename == "p.png"
 
-    # Idempotent: the legacy tables are gone, re-running is a no-op.
+    # Legacy component rows are preserved (orphaned) in `order_components`, and the
+    # temporary tables are gone — re-running the upgrade is a no-op.
     from app.services.seed import _tables
     with engine.begin() as conn:
-        assert "_legacy_order_items" not in _tables(conn)
-        assert "_legacy_order_images" not in _tables(conn)
+        tables = _tables(conn)
+        assert "_legacy_order_items" not in tables
+        assert "_legacy_order_images" not in tables
+        assert "order_components" in tables
+        (count,) = conn.exec_driver_sql("SELECT COUNT(*) FROM order_components").fetchone()
+        assert count == 1
     initialize_database(engine)

@@ -1,8 +1,9 @@
-"""Schemas for orders, their pieces (items), and component line items.
+"""Schemas for orders, their pieces (items) and split payments.
 
-An order has one or more **items** (pieces); each item has its own
-category/weight/supplied-from and a list of **components** whose prices sum to
-the item subtotal. The order total is the sum of all item subtotals.
+Each item is priced from a weights×rates breakdown (net/metal weight is derived;
+the item subtotal sums metal/diamond/stone/others/labour values). The order total
+is the sum of item subtotals. Payment can be split across modes; the cash portion
+is mirrored to the cash book by the service layer.
 """
 from __future__ import annotations
 
@@ -12,28 +13,6 @@ from decimal import Decimal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.models.base import OrderStatus, PaymentMode
-
-
-class OrderComponentIn(BaseModel):
-    component_type_id: int
-    pcs: int | None = None
-    weight: Decimal | None = None
-    purity_type_id: int | None = None
-    rate: Decimal | None = None
-    price: Decimal = Decimal("0")
-
-
-class OrderComponentOut(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: int
-    component_type_id: int
-    pcs: int | None
-    weight: Decimal | None
-    purity_type_id: int | None
-    rate: Decimal | None
-    price: Decimal
-    sort_order: int
 
 
 class OrderImageMeta(BaseModel):
@@ -53,7 +32,18 @@ class OrderItemIn(BaseModel):
     item_name: str | None = Field(default=None, max_length=160)  # optional free-text
     weight_type_id: int | None = None
     supply_source_id: int | None = None
-    components: list[OrderComponentIn] = []
+    purity_type_id: int | None = None
+    # Weights — gross in grams; diamond/stone/others in carats.
+    gross_weight: Decimal | None = None
+    diamond_weight: Decimal | None = None
+    stone_weight: Decimal | None = None
+    others_weight: Decimal | None = None
+    # Rates — metal/labour per gram of net weight; diamond/stone/others per carat.
+    metal_rate: Decimal | None = None
+    diamond_rate: Decimal | None = None
+    stone_rate: Decimal | None = None
+    others_rate: Decimal | None = None
+    labour_rate: Decimal | None = None
 
 
 class OrderItemOut(BaseModel):
@@ -64,10 +54,34 @@ class OrderItemOut(BaseModel):
     item_name: str | None
     weight_type_id: int | None
     supply_source_id: int | None
+    purity_type_id: int | None
+    gross_weight: Decimal | None
+    diamond_weight: Decimal | None
+    stone_weight: Decimal | None
+    others_weight: Decimal | None
+    net_weight: Decimal | None
+    metal_rate: Decimal | None
+    diamond_rate: Decimal | None
+    stone_rate: Decimal | None
+    others_rate: Decimal | None
+    labour_rate: Decimal | None
     subtotal: Decimal
     sort_order: int
-    components: list[OrderComponentOut]
     images: list[OrderImageMeta] = []
+
+
+class OrderPaymentIn(BaseModel):
+    mode: PaymentMode
+    amount: Decimal = Decimal("0")
+
+
+class OrderPaymentOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    mode: PaymentMode
+    amount: Decimal
+    sort_order: int
 
 
 class OrderIn(BaseModel):
@@ -80,8 +94,7 @@ class OrderIn(BaseModel):
     reference: str | None = None       # free text (friends / family / referral)
     source_id: int | None = None       # configurable order source (Whatsapp/…)
     status: OrderStatus = OrderStatus.pending
-    payment_received: Decimal = Decimal("0")
-    payment_mode: PaymentMode | None = None
+    payments: list[OrderPaymentIn] = Field(default_factory=list)
     items: list[OrderItemIn] = Field(default_factory=list)
 
     @model_validator(mode="after")
@@ -107,9 +120,9 @@ class OrderOut(BaseModel):
     total_amount: Decimal
     payment_received: Decimal
     balance: Decimal
-    payment_mode: PaymentMode | None
     is_backdated: bool
     items: list[OrderItemOut]
+    payments: list[OrderPaymentOut]
 
 
 class OrderSummary(BaseModel):

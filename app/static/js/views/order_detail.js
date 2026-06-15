@@ -1,13 +1,19 @@
-// Order detail overlay: order-level info plus each item (piece) with its
-// components and pictures. Opened from the Sales and Order/Stock reports.
+// Order detail overlay: order-level info + payments, and each item (piece) with
+// its weights/rates breakdown and pictures. Opened from Sales and Stock reports.
 (function () {
   "use strict";
   const { el, clear, toast } = window.ui;
 
   function money(n) { return "₹ " + (Number(n) || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 }); }
+  function num(n) { return Number(n) || 0; }
   function nameOf(list, id) { const x = list.find((i) => i.id === id); return x ? x.name : "—"; }
+  function wt(g) { return g == null ? "—" : num(g).toFixed(3) + " g"; }
+  function ct(c) { return c == null || num(c) === 0 ? "—" : num(c).toFixed(3) + " ct"; }
   function infoRow(label, value) {
     return el("tr", {}, [el("td", { class: "muted", style: "width:160px;" }, label), el("td", {}, value)]);
+  }
+  function valRow(label, value) {
+    return el("tr", {}, [el("td", { class: "muted" }, label), el("td", { class: "amount num" }, value)]);
   }
 
   function overlay(children) {
@@ -20,23 +26,19 @@
     return back;
   }
 
-  function pieceBlock(orderId, piece, comps, purs, cats, wts, sss) {
-    const compTable = el("table", {}, [
-      el("thead", {}, el("tr", {}, ["Component", "Pcs", "Weight", "Purity", "Rate", "Price"].map((h) => el("th", {}, h)))),
-      el("tbody", {}, piece.components.length ? piece.components.map((it) => el("tr", {}, [
-        el("td", {}, nameOf(comps, it.component_type_id)),
-        el("td", {}, it.pcs ?? "—"),
-        el("td", {}, it.weight ?? "—"),
-        el("td", {}, it.purity_type_id ? nameOf(purs, it.purity_type_id) : "—"),
-        el("td", { class: "amount num" }, it.rate != null ? money(it.rate) : "—"),
-        el("td", { class: "amount num" }, money(it.price)),
-      ])) : [el("tr", {}, el("td", { class: "muted", colspan: "6" }, "No components."))]),
-    ]);
+  function pieceBlock(orderId, piece, cats, wts, sss, purs) {
+    const net = num(piece.net_weight);
+    const vals = [
+      ["Metal", net * num(piece.metal_rate)],
+      ["Diamond", num(piece.diamond_weight) * num(piece.diamond_rate)],
+      ["Stone", num(piece.stone_weight) * num(piece.stone_rate)],
+      ["Others", num(piece.others_weight) * num(piece.others_rate)],
+      ["Labour", net * num(piece.labour_rate)],
+    ].filter(([, v]) => v);
 
     const gallery = el("div", { style: "display:flex;gap:10px;flex-wrap:wrap;margin-top:8px;" });
     const fileInput = el("input", { type: "file", accept: "image/*", multiple: true, onchange: addImages });
     const base = `/api/orders/${orderId}/items/${piece.id}/images`;
-
     async function loadImages() {
       const imgs = await api.get(base);
       clear(gallery);
@@ -72,12 +74,19 @@
         el("table", {}, el("tbody", {}, [
           infoRow("Category", piece.item_category_id ? nameOf(cats, piece.item_category_id) : "—"),
           infoRow("Item name", piece.item_name || "—"),
+          infoRow("Purity", piece.purity_type_id ? nameOf(purs, piece.purity_type_id) : "—"),
           infoRow("Weight type", piece.weight_type_id ? nameOf(wts, piece.weight_type_id) : "—"),
           infoRow("Supplied from", piece.supply_source_id ? nameOf(sss, piece.supply_source_id) : "—"),
-          infoRow("Subtotal", money(piece.subtotal)),
+          infoRow("Gross / Net wt", `${wt(piece.gross_weight)}  /  ${wt(piece.net_weight)}`),
+          infoRow("Diamond / Stone / Others", `${ct(piece.diamond_weight)} · ${ct(piece.stone_weight)} · ${ct(piece.others_weight)}`),
         ])),
-        el("div", { class: "form-section-title" }, "Components"),
-        compTable,
+        el("div", { class: "form-section-title" }, "Value breakdown"),
+        el("table", {}, el("tbody", {}, vals.length
+          ? vals.map(([label, v]) => valRow(label, money(v))).concat([
+              el("tr", {}, [el("td", { style: "font-weight:600;" }, "Subtotal"),
+                el("td", { class: "amount num", style: "font-weight:600;" }, money(piece.subtotal))]),
+            ])
+          : [el("tr", {}, el("td", { class: "muted", colspan: "2" }, `Subtotal ${money(piece.subtotal)}`))])),
         el("div", { class: "form-section-title" }, "Pictures"),
         gallery,
         el("div", { style: "margin-top:10px;" }, fileInput),
@@ -87,11 +96,10 @@
   }
 
   async function open(orderId) {
-    const [o, comps, purs, cats, wts, sss, srcs] = await Promise.all([
+    const [o, cats, wts, sss, srcs, purs] = await Promise.all([
       api.get(`/api/orders/${orderId}`),
-      api.get("/api/component-types"), api.get("/api/purity-types"),
       api.get("/api/item-categories"), api.get("/api/weight-types"),
-      api.get("/api/supply-sources"), api.get("/api/order-sources"),
+      api.get("/api/supply-sources"), api.get("/api/order-sources"), api.get("/api/purity-types"),
     ]);
     const cust = await api.get(`/api/customers/${o.customer_id}`).catch(() => ({ name: "" }));
 
@@ -101,8 +109,12 @@
       window.KhataApp.editOrder(o.id);
     } }, "Edit");
 
+    const paymentsText = (o.payments && o.payments.length)
+      ? o.payments.map((p) => `${p.mode.replace(/_/g, " ")} ${money(p.amount)}`).join("  ·  ")
+      : "—";
+
     const itemsWrap = el("div", {}, [el("div", { class: "form-section-title" }, `Items (${o.items.length})`)]);
-    o.items.forEach((piece) => itemsWrap.appendChild(pieceBlock(o.id, piece, comps, purs, cats, wts, sss)));
+    o.items.forEach((piece) => itemsWrap.appendChild(pieceBlock(o.id, piece, cats, wts, sss, purs)));
 
     back = overlay([
       el("div", { class: "card-header" }, [
@@ -120,6 +132,7 @@
           infoRow("Order code", o.order_code || "—"),
           infoRow("Notes", o.notes || "—"),
           infoRow("Total", money(o.total_amount)),
+          infoRow("Payments", paymentsText),
           infoRow("Received", money(o.payment_received)),
           infoRow("Balance", money(o.balance)),
         ])),

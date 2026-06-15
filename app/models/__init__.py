@@ -24,7 +24,7 @@ from app.models.masters import (
     SupplySource,
     WeightType,
 )
-from app.models.order import Order, OrderComponent, OrderImage, OrderItem
+from app.models.order import Order, OrderImage, OrderItem, OrderPayment
 from app.models.purchase import Purchase
 from app.models.system import AuditLog, Setting
 from app.models.user import User
@@ -50,9 +50,9 @@ __all__ = [
     "SupplySource",
     "WeightType",
     "Order",
-    "OrderComponent",
     "OrderImage",
     "OrderItem",
+    "OrderPayment",
     "Purchase",
     "AuditLog",
     "Setting",

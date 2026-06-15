@@ -9,7 +9,6 @@ from openpyxl.worksheet.datavalidation import DataValidation
 from sqlalchemy.orm import Session
 
 from app.models import (
-    ComponentType,
     ItemCategory,
     OrderSource,
     PurityType,
@@ -25,9 +24,10 @@ SHEETS = {
     "Parties": ["name", "phone", "address", "notes"],
     "Opening Balances": ["entity_type", "entity_name", "as_of_date", "amount", "direction"],
     "Orders": ["order_ref", "customer_name", "order_date", "item_category", "item_name",
-               "weight_type", "supply_source", "source", "reference", "order_code", "status",
-               "payment_received", "payment_mode", "notes"],
-    "Order Items": ["order_ref", "component_type", "pcs", "weight", "purity", "rate", "price"],
+               "weight_type", "supply_source", "purity", "source", "reference",
+               "gross_weight", "diamond_weight", "diamond_rate", "stone_weight", "stone_rate",
+               "others_weight", "others_rate", "metal_rate", "labour_rate",
+               "order_code", "status", "payment_received", "payment_mode", "notes"],
     "Cash Entries": ["date", "person_name", "details", "type", "amount"],
     "Purchases": ["date", "party_name", "details", "entry_notes", "amount", "amount_paid"],
 }
@@ -38,14 +38,15 @@ INSTRUCTIONS = [
     "Fill each sheet and upload it under Settings > Import. Validation runs before anything is saved.",
     "",
     "Customers / Parties: 'name' is required; phone/address/notes optional.",
-    "Orders: one row per order. 'order_ref' is your own reference used to link Order Items.",
-    "  item_category is REQUIRED (dropdown). item_name (free text), weight_type and",
-    "  supply_source are optional. 'source' (dropdown: how the order came in) and",
-    "  'reference' (free text, e.g. friends/family) are optional.",
+    "Orders: one row per order (= one item). item_category is REQUIRED (dropdown).",
+    "  item_name (free text), weight_type, supply_source, purity and 'source' are optional.",
+    "  'reference' is free text (e.g. friends/family).",
+    "  Item price is computed: gross_weight (g); diamond/stone/others weights are in CARATS",
+    "  (5 ct = 1 g). Net (metal) weight = gross − (diamond+stone+others)/5. Price =",
+    "  net×metal_rate + diamond_ct×diamond_rate + stone_ct×stone_rate + others_ct×others_rate",
+    "  + net×labour_rate. Leave rates blank for parts you don't use.",
     "  status = pending or delivered. payment_mode = cash/upi/bank_transfer/old_gold_exchange/other.",
     "  Each imported order becomes a single item; use the app to add more items to an order.",
-    "Order Items: one or more component rows per order; 'order_ref' must match a row in Orders.",
-    "  component_type and purity must match the shop's configured lists (dropdowns provided).",
     "Cash Entries: type = received or paid.",
     "Opening Balances: entity_type = customer or party; direction = debit or credit.",
     "Dates: use YYYY-MM-DD (e.g. 2026-06-14).",
@@ -68,7 +69,6 @@ def _style_header(ws, headers: list[str]) -> None:
 
 
 def build_template(session: Session) -> bytes:
-    components = [c.name for c in session.query(ComponentType).filter_by(is_active=True).all()]
     purities = [p.name for p in session.query(PurityType).filter_by(is_active=True).all()]
     categories = [c.name for c in session.query(ItemCategory).filter_by(is_active=True).all()]
     weights = [w.name for w in session.query(WeightType).filter_by(is_active=True).all()]
@@ -95,18 +95,17 @@ def build_template(session: Session) -> bytes:
             dv.add(f"{col_letter}2:{col_letter}1000")
 
         if title == "Orders":
-            # Columns: A ref, B customer, C date, D category, E item_name, F weight,
-            #          G supply, H source, I reference, J code, K status, L received,
-            #          M mode, N notes
+            # Columns: A ref, B customer, C date, D category, E item_name, F weight_type,
+            #          G supply, H purity, I source, J reference, K gross_wt, L dia_wt,
+            #          M dia_rate, N stone_wt, O stone_rate, P others_wt, Q others_rate,
+            #          R metal_rate, S labour_rate, T code, U status, V received, W mode, X notes
             add_dv(categories, "D")
             add_dv(weights, "F")
             add_dv(supplies, "G")
-            add_dv(sources, "H")
-            add_dv(["pending", "delivered"], "K")
-            add_dv(["cash", "upi", "bank_transfer", "old_gold_exchange", "other"], "M")
-        elif title == "Order Items":
-            add_dv(components, "B")
-            add_dv(purities, "E")
+            add_dv(purities, "H")
+            add_dv(sources, "I")
+            add_dv(["pending", "delivered"], "U")
+            add_dv(["cash", "upi", "bank_transfer", "old_gold_exchange", "other"], "W")
         elif title == "Cash Entries":
             add_dv(["received", "paid"], "D")
         elif title == "Opening Balances":

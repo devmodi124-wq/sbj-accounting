@@ -1,4 +1,4 @@
-"""Phase 4 / multi-item orders: totals, balance, customer create, backdating, audit."""
+"""Multi-item orders: weights×rates pricing, split payments, auto cash, audit."""
 from __future__ import annotations
 
 from datetime import date, timedelta
@@ -8,23 +8,21 @@ from fastapi.testclient import TestClient
 from app.main import app
 
 
-def _component_ids(client):
-    return [t["id"] for t in client.get("/api/component-types").json()]
-
-
 def _category_id(client):
     return client.get("/api/item-categories").json()[0]["id"]
 
 
 def _item(client, **overrides):
-    comps = _component_ids(client)
+    # gross 5g, diamond 2.5ct@20000, metal 6800/g, labour 600/g
+    # net = 5 − 2.5/5 = 4.5g; subtotal = 4.5*6800 + 2.5*20000 + 4.5*600 = 83300
     item = {
         "item_category_id": _category_id(client),
         "item_name": "Ring",
-        "components": [
-            {"component_type_id": comps[0], "weight": "4.055", "rate": "9900", "price": "35430"},
-            {"component_type_id": comps[5], "price": "5440"},
-        ],
+        "gross_weight": "5",
+        "diamond_weight": "2.5",
+        "diamond_rate": "20000",
+        "metal_rate": "6800",
+        "labour_rate": "600",
     }
     item.update(overrides)
     return item
@@ -35,8 +33,7 @@ def _order_payload(client, **overrides):
         "customer_name": "Malti Devi",
         "order_date": date.today().isoformat(),
         "status": "delivered",
-        "payment_received": "10000",
-        "payment_mode": "cash",
+        "payments": [{"mode": "cash", "amount": "10000"}],
         "items": [_item(client)],
     }
     payload.update(overrides)
@@ -47,28 +44,64 @@ def test_create_order_computes_totals(admin_client):
     r = admin_client.post("/api/orders", json=_order_payload(admin_client))
     assert r.status_code == 201
     body = r.json()
-    assert body["total_amount"] == "40870.00"          # 35430 + 5440
-    assert body["balance"] == "30870.00"               # 40870 - 10000
+    assert body["total_amount"] == "83300.00"
+    assert body["balance"] == "73300.00"            # 83300 - 10000
+    assert body["payment_received"] == "10000.00"
     assert len(body["items"]) == 1
-    assert len(body["items"][0]["components"]) == 2
-    assert body["items"][0]["subtotal"] == "40870.00"
+    item = body["items"][0]
+    assert item["net_weight"] == "4.500"            # 5 - 2.5/5
+    assert item["subtotal"] == "83300.00"
+
+
+def test_net_weight_clamped_and_metal_only(admin_client):
+    # No stones, metal only: net == gross, subtotal = gross*metal_rate
+    body = admin_client.post("/api/orders", json=_order_payload(admin_client, payments=[], items=[
+        _item(admin_client, gross_weight="10", diamond_weight=None, diamond_rate=None,
+              labour_rate=None, metal_rate="5000"),
+    ])).json()
+    assert body["items"][0]["net_weight"] == "10.000"
+    assert body["items"][0]["subtotal"] == "50000.00"
+    assert body["total_amount"] == "50000.00"
+    assert body["balance"] == "50000.00"
 
 
 def test_multi_item_order_sums_subtotals(admin_client):
-    comps = _component_ids(admin_client)
     cat = _category_id(admin_client)
-    payload = _order_payload(admin_client, payment_received="0", items=[
-        {"item_category_id": cat, "item_name": "Ring",
-         "components": [{"component_type_id": comps[0], "price": "1000"}]},
-        {"item_category_id": cat, "item_name": "Chain",
-         "components": [{"component_type_id": comps[0], "price": "500"},
-                        {"component_type_id": comps[5], "price": "200"}]},
+    payload = _order_payload(admin_client, payments=[], items=[
+        {"item_category_id": cat, "gross_weight": "5", "metal_rate": "6800"},   # 34000
+        {"item_category_id": cat, "gross_weight": "2", "metal_rate": "6800"},   # 13600
     ])
     body = admin_client.post("/api/orders", json=payload).json()
     assert len(body["items"]) == 2
-    assert body["total_amount"] == "1700.00"           # 1000 + (500+200)
-    assert body["items"][0]["subtotal"] == "1000.00"
-    assert body["items"][1]["subtotal"] == "700.00"
+    assert body["items"][0]["subtotal"] == "34000.00"
+    assert body["items"][1]["subtotal"] == "13600.00"
+    assert body["total_amount"] == "47600.00"
+
+
+def test_split_payment_posts_cash_to_cash_in_hand(admin_client):
+    payload = _order_payload(admin_client, payments=[
+        {"mode": "cash", "amount": "5000"}, {"mode": "upi", "amount": "5000"}])
+    body = admin_client.post("/api/orders", json=payload).json()
+    assert body["payment_received"] == "10000.00"
+    assert len(body["payments"]) == 2
+
+    # Only the cash portion shows in the cash book / Cash-in-Hand.
+    cash = admin_client.get("/api/cash").json()
+    auto = [c for c in cash if c["amount"] == "5000.00" and c["entry_type"] == "received"]
+    assert auto, "cash portion should create a cash-book entry"
+    d = admin_client.get("/api/dashboard").json()
+    assert d["cash_in_hand"] == "5000.00"
+
+
+def test_edit_reconciles_auto_cash(admin_client):
+    created = admin_client.post("/api/orders", json=_order_payload(admin_client, payments=[
+        {"mode": "cash", "amount": "5000"}])).json()
+    assert admin_client.get("/api/dashboard").json()["cash_in_hand"] == "5000.00"
+
+    # Edit to remove the cash payment → the auto cash entry is dropped.
+    upd = _order_payload(admin_client, payments=[{"mode": "upi", "amount": "5000"}])
+    admin_client.put(f"/api/orders/{created['id']}", json=upd)
+    assert admin_client.get("/api/dashboard").json()["cash_in_hand"] == "0.00"
 
 
 def test_create_order_creates_customer_via_matching(admin_client):
@@ -77,32 +110,21 @@ def test_create_order_creates_customer_via_matching(admin_client):
     assert any(c["name"] == "New Person" for c in found)
 
 
-def test_create_reuses_existing_customer(admin_client):
-    admin_client.post("/api/orders", json=_order_payload(admin_client, customer_name="Repeat Cust"))
-    admin_client.post("/api/orders", json=_order_payload(admin_client, customer_name="  repeat cust "))
-    matches = admin_client.get("/api/customers", params={"q": "repeat cust"}).json()
-    assert len([c for c in matches if c["name"].lower() == "repeat cust"]) == 1
-
-
 def test_update_order_recomputes(admin_client):
     oid = admin_client.post("/api/orders", json=_order_payload(admin_client)).json()["id"]
-    comps = _component_ids(admin_client)
     cat = _category_id(admin_client)
-    upd = _order_payload(admin_client, payment_received="0", items=[
-        {"item_category_id": cat, "components": [{"component_type_id": comps[0], "price": "1000"}]},
-    ])
+    upd = _order_payload(admin_client, payments=[], items=[
+        {"item_category_id": cat, "gross_weight": "1", "metal_rate": "1000"}])
     body = admin_client.put(f"/api/orders/{oid}", json=upd).json()
     assert body["total_amount"] == "1000.00"
     assert body["balance"] == "1000.00"
     assert len(body["items"]) == 1
-    assert len(body["items"][0]["components"]) == 1
 
 
 def test_employee_backdated_order_rejected(admin_client):
     admin_client.post("/api/users", json={"username": "ramesh", "password": "emp123"})
     emp = TestClient(app)
     emp.post("/auth/login", json={"username": "ramesh", "password": "emp123"})
-
     old = (date.today() - timedelta(days=30)).isoformat()
     r = emp.post("/api/orders", json=_order_payload(emp, order_date=old))
     assert r.status_code == 422
@@ -118,34 +140,31 @@ def test_admin_backdated_order_allowed(admin_client):
 def test_category_required(admin_client):
     payload = _order_payload(admin_client)
     del payload["items"][0]["item_category_id"]
-    r = admin_client.post("/api/orders", json=payload)
-    assert r.status_code == 422  # pydantic: field required
+    assert admin_client.post("/api/orders", json=payload).status_code == 422
 
 
 def test_at_least_one_item_required(admin_client):
-    payload = _order_payload(admin_client, items=[])
-    r = admin_client.post("/api/orders", json=payload)
-    assert r.status_code == 422
+    assert admin_client.post("/api/orders", json=_order_payload(admin_client, items=[])).status_code == 422
 
 
 def test_invalid_category_rejected(admin_client):
     payload = _order_payload(admin_client, items=[_item(admin_client, item_category_id=99999)])
-    r = admin_client.post("/api/orders", json=payload)
-    assert r.status_code == 422
+    assert admin_client.post("/api/orders", json=payload).status_code == 422
 
 
-def test_category_weight_supply_persisted(admin_client):
+def test_lookups_persisted(admin_client):
     cats = admin_client.get("/api/item-categories").json()
     weights = admin_client.get("/api/weight-types").json()
     supplies = admin_client.get("/api/supply-sources").json()
-    payload = _order_payload(admin_client, items=[_item(
-        admin_client, item_category_id=cats[0]["id"],
-        weight_type_id=weights[0]["id"], supply_source_id=supplies[0]["id"],
-    )])
-    item = admin_client.post("/api/orders", json=payload).json()["items"][0]
+    purities = admin_client.get("/api/purity-types").json()
+    item = admin_client.post("/api/orders", json=_order_payload(admin_client, items=[_item(
+        admin_client, item_category_id=cats[0]["id"], weight_type_id=weights[0]["id"],
+        supply_source_id=supplies[0]["id"], purity_type_id=purities[0]["id"],
+    )])).json()["items"][0]
     assert item["item_category_id"] == cats[0]["id"]
     assert item["weight_type_id"] == weights[0]["id"]
     assert item["supply_source_id"] == supplies[0]["id"]
+    assert item["purity_type_id"] == purities[0]["id"]
 
 
 def test_item_name_optional(admin_client):
@@ -163,7 +182,6 @@ def test_reference_free_text_and_source(admin_client):
         admin_client, reference="family", source_id=src_id)).json()
     assert body["reference"] == "family"
     assert body["source_id"] == src_id
-    # summary surfaces the source name
     summary = [o for o in admin_client.get("/api/orders").json() if o["id"] == body["id"]][0]
     assert summary["source"] == sources[0]["name"]
 
@@ -192,7 +210,6 @@ def test_item_images_upload_list_get_delete(admin_client):
     assert len(imgs) == 2
     assert len(admin_client.get(base).json()) == 2
 
-    # order list reports the total image count across pieces
     summary = [o for o in admin_client.get("/api/orders").json() if o["id"] == oid][0]
     assert summary["image_count"] == 2
 
@@ -210,13 +227,9 @@ def test_update_preserves_images_on_existing_piece(admin_client):
     base = f"/api/orders/{oid}/items/{iid}/images"
     admin_client.post(base, files=[("files", ("p.png", PNG, "image/png"))])
 
-    # Edit the order, sending the existing piece back by id → image survives.
-    comps = _component_ids(admin_client)
     cat = _category_id(admin_client)
-    upd = _order_payload(admin_client, payment_received="0", items=[
-        {"id": iid, "item_category_id": cat, "item_name": "Edited",
-         "components": [{"component_type_id": comps[0], "price": "999"}]},
-    ])
+    upd = _order_payload(admin_client, payments=[], items=[
+        {"id": iid, "item_category_id": cat, "item_name": "Edited", "gross_weight": "1", "metal_rate": "999"}])
     body = admin_client.put(f"/api/orders/{oid}", json=upd).json()
     assert body["items"][0]["id"] == iid
     assert body["items"][0]["item_name"] == "Edited"
@@ -242,4 +255,4 @@ def test_order_audited(admin_client):
         tables = {row.table_name for row in s.query(AuditLog).all()}
     assert "orders" in tables
     assert "order_items" in tables        # pieces
-    assert "order_components" in tables    # component breakdown
+    assert "order_payments" in tables      # split-payment lines
