@@ -126,7 +126,7 @@
       async mount(viewEl) {
         if (cfg.footer) footer = el("span", { class: "pill pill-red" });
         for (const sf of (cfg.selectFilters || [])) {
-          try { filterOptions[sf.param] = await api.get(sf.endpoint + "?active_only=true"); }
+          try { filterOptions[sf.param] = await api.get(sf.endpoint + "?active_only=true&limit=1000"); }
           catch (_) { filterOptions[sf.param] = []; }
         }
         tbody = el("tbody");
@@ -196,6 +196,19 @@
       { key: "purchased", label: "Total purchased", money: true }, { key: "paid", label: "Paid", money: true },
       { key: "balance", label: "Balance", money: true, negIfPositive: true, sortable: true },
       { key: "last_txn", label: "Last txn", sortable: true }, { key: "ageing", label: "Ageing", pill: ageingPill },
+    ],
+  });
+  window.KhataViews.purchases = makeReport({
+    endpoint: "/api/reports/purchases", title: "Purchases Report", subtitle: "Supplier purchases",
+    hasDateRange: true, defaultSort: "purchase_date", ledger: "party", ledgerIdKey: "party_id",
+    statusOptions: [{ value: "pending", label: "Pending" }, { value: "paid", label: "Paid" }],
+    selectFilters: [{ param: "party_id", endpoint: "/api/parties", allLabel: "All suppliers" }],
+    columns: [
+      { key: "purchase_date", label: "Date", sortable: true }, { key: "party_name", label: "Supplier", sortable: true },
+      { key: "details", label: "Details" },
+      { key: "amount", label: "Amount", money: true, sortable: true }, { key: "amount_paid", label: "Paid", money: true },
+      { key: "balance", label: "Balance", money: true, negIfPositive: true, sortable: true },
+      { key: "status", label: "Status", pill: statusPill },
     ],
   });
   window.KhataViews.customers = makeReport({

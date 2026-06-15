@@ -97,6 +97,23 @@ def test_creditors_report(admin_client):
     assert c["total_outstanding"] == "4000.00"
 
 
+def test_purchase_report_filters(admin_client):
+    admin_client.post("/api/purchases", json={"purchase_date": TODAY_S, "party_name": "Supp One",
+        "amount": "5000", "amount_paid": "5000"})   # paid
+    admin_client.post("/api/purchases", json={"purchase_date": TODAY_S, "party_name": "Supp Two",
+        "amount": "8000", "amount_paid": "1000"})   # pending
+    rep = admin_client.get("/api/reports/purchases").json()
+    assert rep["total"] == 2
+    assert all("party_id" in r for r in rep["rows"])   # supports the supplier-ledger link
+
+    pending = admin_client.get("/api/reports/purchases", params={"status": "pending"}).json()
+    assert pending["total"] == 1 and pending["rows"][0]["party_name"] == "Supp Two"
+
+    pid = [r["party_id"] for r in rep["rows"] if r["party_name"] == "Supp One"][0]
+    by_party = admin_client.get("/api/reports/purchases", params={"party_id": pid}).json()
+    assert by_party["total"] == 1 and by_party["rows"][0]["party_name"] == "Supp One"
+
+
 # ===== Customer report =====
 
 def test_customer_report_avg(admin_client):

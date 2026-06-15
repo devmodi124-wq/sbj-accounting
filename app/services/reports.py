@@ -318,6 +318,7 @@ def purchase_report(
             continue
         rows.append({
             "id": p.id,
+            "party_id": p.party_id,
             "purchase_date": p.purchase_date.isoformat(),
             "party_name": p.party.name if p.party else "",
             "details": p.details or "",
