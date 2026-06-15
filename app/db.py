@@ -22,7 +22,9 @@ MASTER_KEY_BYTES = 32
 # Bumped when the schema changes; drives hand-written upgrade steps (see seed.py).
 # v2: order item_category/weight_type/supply_source lookups + order_images.
 # v3: customers/parties is_active (soft deactivate).
-SCHEMA_VERSION = 3
+# v4: multi-item orders — order_items becomes a *piece*, components move to
+#     order_components, images move per-piece; orders gain reference + source_id.
+SCHEMA_VERSION = 4
 
 
 class Base(DeclarativeBase):

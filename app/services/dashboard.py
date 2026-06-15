@@ -13,11 +13,13 @@ from app.models import (
     ComponentType,
     Customer,
     Order,
+    OrderComponent,
     OrderItem,
     Purchase,
 )
 from app.models.base import CashEntryType, OrderStatus
 from app.services.dateranges import last_n_months, resolve_range
+from app.services.orders import item_names_label
 from app.services.settings_store import get_setting
 
 ZERO = Decimal("0")
@@ -95,7 +97,7 @@ def pending_orders(session: Session, limit: int = 10) -> list[dict]:
         {
             "id": o.id,
             "customer_name": o.customer.name if o.customer else "",
-            "item_name": o.item_name,
+            "item_name": item_names_label(o),
             "order_date": o.order_date.isoformat(),
         }
         for o in rows
@@ -127,13 +129,14 @@ def sales_by_component(session: Session, start: date, end: date) -> list[dict]:
     rows = (
         session.query(
             ComponentType.name,
-            func.coalesce(func.sum(OrderItem.price), 0).label("total"),
+            func.coalesce(func.sum(OrderComponent.price), 0).label("total"),
         )
-        .join(OrderItem, OrderItem.component_type_id == ComponentType.id)
+        .join(OrderComponent, OrderComponent.component_type_id == ComponentType.id)
+        .join(OrderItem, OrderItem.id == OrderComponent.order_item_id)
         .join(Order, Order.id == OrderItem.order_id)
         .filter(Order.order_date >= start, Order.order_date <= end)
         .group_by(ComponentType.name)
-        .order_by(func.sum(OrderItem.price).desc())
+        .order_by(func.sum(OrderComponent.price).desc())
         .all()
     )
     return [{"name": r.name, "total": _money(r.total)} for r in rows]

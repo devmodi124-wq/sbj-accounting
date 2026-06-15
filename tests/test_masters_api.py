@@ -48,8 +48,9 @@ def test_delete_customer_with_orders_blocked(admin_client):
     cat = admin_client.get("/api/item-categories").json()[0]["id"]
     cid = admin_client.post("/api/customers", json={"name": "Has Order"}).json()["id"]
     admin_client.post("/api/orders", json={
-        "customer_id": cid, "order_date": "2026-06-14", "item_category_id": cat,
-        "payment_received": "0", "items": [{"component_type_id": comps[0], "price": "100"}],
+        "customer_id": cid, "order_date": "2026-06-14", "payment_received": "0",
+        "items": [{"item_category_id": cat,
+                   "components": [{"component_type_id": comps[0], "price": "100"}]}],
     })
     r = admin_client.delete(f"/api/customers/{cid}")
     assert r.status_code == 409

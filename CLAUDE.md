@@ -87,7 +87,8 @@ old values on update.
 - **Backdating**: Employees cannot create/edit entries with a date earlier than `today - employee_backdate_limit_days` (admin-configurable setting, default 7). Admins are exempt. Show an inline error — never a silent failure.
 - **Session**: Single active session app-wide. A second login invalidates the first session with a message.
 - **Cash in hand** = sum of all `cash_entries` received − sum paid (all-time) + opening balance setting.
-- **Order total** = sum of `order_items.price` (stored denormalized on `orders.total_amount`; recompute on item changes).
+- **Orders are multi-item**: an `order` has one or more **items/pieces** (`order_items`: name/category/weight/supplied-from + denormalized `subtotal`); each piece has **components** (`order_components`: Round/Stone/Labour…, price) and its own pictures (`order_images.order_item_id`). **Item subtotal** = sum of its `order_components.price`; **order total** = sum of all `order_items.subtotal` (denormalized on `orders.total_amount`; recompute on any change). Each piece requires a category. `update_order` diffs pieces by id so editing preserves a piece's pictures; removing a piece cascades its images. NB: the model `OrderItem` is a *piece* and `OrderComponent` is a *component* (the UI calls them "item" and "component").
+- **Order-level reference & source**: `orders.reference` is free text (e.g. friends/family); `orders.source_id` → `order_sources` lookup (Whatsapp/Instagram/… — configurable in Settings like the other dropdowns).
 - **Balance**: `orders.balance = total_amount − payment_received`; `purchases.balance = amount − amount_paid`.
 - **`is_backdated`**: computed bool set at save time (entry date vs. created_at).
 

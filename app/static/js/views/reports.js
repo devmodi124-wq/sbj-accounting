@@ -156,6 +156,7 @@
     columns: [
       { key: "order_date", label: "Date", sortable: true }, { key: "customer_name", label: "Customer", sortable: true },
       { key: "item_category", label: "Category" }, { key: "item_name", label: "Item" },
+      { key: "item_count", label: "Items", sortable: true },
       { key: "total_amount", label: "Total", money: true, sortable: true },
       { key: "payment_received", label: "Received", money: true }, { key: "balance", label: "Balance", money: true, negIfPositive: true },
       { key: "status", label: "Status", pill: statusPill },
@@ -168,7 +169,7 @@
     columns: [
       { key: "order_date", label: "Date", sortable: true }, { key: "customer_name", label: "Customer" },
       { key: "item_category", label: "Category" }, { key: "item_name", label: "Item" },
-      { key: "components", label: "Components" },
+      { key: "item_count", label: "Items" }, { key: "components", label: "Components" },
       { key: "status", label: "Status", pill: statusPill }, { key: "days_pending", label: "Days pending", sortable: true },
     ],
   });

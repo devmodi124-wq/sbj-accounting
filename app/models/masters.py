@@ -81,3 +81,9 @@ class SupplySource(_Lookup, Base):
     """Where an order is supplied from (On Order, Stock). Admin-managed."""
 
     __tablename__ = "supply_sources"
+
+
+class OrderSource(_Lookup, Base):
+    """Where an order came in from (Whatsapp, Instagram, Facebook, …). Admin-managed."""
+
+    __tablename__ = "order_sources"

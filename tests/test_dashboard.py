@@ -17,15 +17,17 @@ def _seed(client):
     cat = client.get("/api/item-categories").json()[0]["id"]
     # Order 1: total 40000, received 10000 -> balance 30000 (customer A)
     client.post("/api/orders", json={
-        "customer_name": "Cust A", "order_date": TODAY, "item_category_id": cat, "item_name": "Ring",
+        "customer_name": "Cust A", "order_date": TODAY,
         "status": "delivered", "payment_received": "10000",
-        "items": [{"component_type_id": comps[0], "price": "40000"}],
+        "items": [{"item_category_id": cat, "item_name": "Ring",
+                   "components": [{"component_type_id": comps[0], "price": "40000"}]}],
     })
     # Order 2: total 20000, received 20000 -> balance 0 (customer B), pending status
     client.post("/api/orders", json={
-        "customer_name": "Cust B", "order_date": TODAY, "item_category_id": cat, "item_name": "Chain",
+        "customer_name": "Cust B", "order_date": TODAY,
         "status": "pending", "payment_received": "20000",
-        "items": [{"component_type_id": comps[1], "price": "20000"}],
+        "items": [{"item_category_id": cat, "item_name": "Chain",
+                   "components": [{"component_type_id": comps[1], "price": "20000"}]}],
     })
     # Cash: +5000 received, -2000 paid
     client.post("/api/cash", json={"entry_date": TODAY, "entry_type": "received", "amount": "5000"})

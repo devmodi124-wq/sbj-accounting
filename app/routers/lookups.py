@@ -9,6 +9,7 @@ from app.auth.deps import get_current_user, get_db, require_admin
 from app.models import (
     ComponentType,
     ItemCategory,
+    OrderSource,
     PurityType,
     SupplySource,
     User,
@@ -80,3 +81,4 @@ purity_types = build_lookup_router("/api/purity-types", "purity-types", PurityTy
 item_categories = build_lookup_router("/api/item-categories", "item-categories", ItemCategory)
 weight_types = build_lookup_router("/api/weight-types", "weight-types", WeightType)
 supply_sources = build_lookup_router("/api/supply-sources", "supply-sources", SupplySource)
+order_sources = build_lookup_router("/api/order-sources", "order-sources", OrderSource)

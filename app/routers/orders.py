@@ -1,4 +1,4 @@
-"""Order endpoints (create/list/get/update)."""
+"""Order endpoints (create/list/get/update) + per-piece images."""
 from __future__ import annotations
 
 from typing import Optional
@@ -8,7 +8,7 @@ from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from app.auth.deps import get_current_user, get_db
-from app.models import Order, OrderImage, User
+from app.models import Order, OrderImage, OrderItem, User
 from app.models.base import OrderStatus
 from app.schemas.orders import OrderIn, OrderOut, OrderSummary
 from app.services import orders as order_service
@@ -25,13 +25,15 @@ def _summary(order: Order) -> OrderSummary:
         customer_id=order.customer_id,
         customer_name=order.customer.name if order.customer else "",
         order_date=order.order_date,
-        item_category=order.item_category.name if order.item_category else "",
-        item_name=order.item_name,
+        item_summary=order_service.categories_label(order),
+        item_name=order_service.item_names_label(order),
+        item_count=len(order.items),
         status=order.status,
         total_amount=order.total_amount,
         payment_received=order.payment_received,
         balance=order.balance,
-        image_count=len(order.images),
+        image_count=order_service.image_count(order),
+        source=order.source.name if order.source else None,
     )
 
 
@@ -92,36 +94,38 @@ def update_order(
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
 
 
-# ===== Order images (stored in the encrypted DB; multiple per order) =====
+# ===== Pictures (stored in the encrypted DB; multiple per piece/item) =====
 
-def _require_order(db: Session, order_id: int) -> Order:
-    order = db.get(Order, order_id)
-    if order is None:
+def _require_item(db: Session, order_id: int, item_id: int) -> OrderItem:
+    item = db.get(OrderItem, item_id)
+    if item is None or item.order_id != order_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "not_found")
-    return order
+    return item
 
 
 def _image_meta(img: OrderImage) -> dict:
     return {"id": img.id, "filename": img.filename, "mime": img.mime, "sort_order": img.sort_order}
 
 
-@router.get("/{order_id}/images")
+@router.get("/{order_id}/items/{item_id}/images")
 def list_images(
-    order_id: int, db: Session = Depends(get_db), _user: User = Depends(get_current_user)
+    order_id: int, item_id: int, db: Session = Depends(get_db),
+    _user: User = Depends(get_current_user),
 ) -> list[dict]:
-    order = _require_order(db, order_id)
-    return [_image_meta(img) for img in order.images]
+    item = _require_item(db, order_id, item_id)
+    return [_image_meta(img) for img in item.images]
 
 
-@router.post("/{order_id}/images", status_code=status.HTTP_201_CREATED)
+@router.post("/{order_id}/items/{item_id}/images", status_code=status.HTTP_201_CREATED)
 async def upload_images(
     order_id: int,
+    item_id: int,
     files: list[UploadFile] = File(...),
     db: Session = Depends(get_db),
     _user: User = Depends(get_current_user),
 ) -> list[dict]:
-    order = _require_order(db, order_id)
-    start = len(order.images)
+    item = _require_item(db, order_id, item_id)
+    start = len(item.images)
     for offset, upload in enumerate(files):
         content = await upload.read()
         if not (upload.content_type or "").startswith("image/"):
@@ -129,39 +133,41 @@ async def upload_images(
         if len(content) > MAX_IMAGE_BYTES:
             raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "image_too_large")
         db.add(OrderImage(
-            order_id=order.id,
+            order_item_id=item.id,
             filename=upload.filename or "image",
             mime=upload.content_type or "image/jpeg",
             data=content,
             sort_order=start + offset,
         ))
     db.commit()
-    db.refresh(order)
-    return [_image_meta(img) for img in order.images]
+    db.refresh(item)
+    return [_image_meta(img) for img in item.images]
 
 
-@router.get("/{order_id}/images/{image_id}")
+@router.get("/{order_id}/items/{item_id}/images/{image_id}")
 def get_image(
     order_id: int,
+    item_id: int,
     image_id: int,
     db: Session = Depends(get_db),
     _user: User = Depends(get_current_user),
 ) -> Response:
     img = db.get(OrderImage, image_id)
-    if img is None or img.order_id != order_id:
+    if img is None or img.order_item_id != item_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "not_found")
     return Response(content=img.data, media_type=img.mime)
 
 
-@router.delete("/{order_id}/images/{image_id}")
+@router.delete("/{order_id}/items/{item_id}/images/{image_id}")
 def delete_image(
     order_id: int,
+    item_id: int,
     image_id: int,
     db: Session = Depends(get_db),
     _user: User = Depends(get_current_user),
 ) -> dict:
     img = db.get(OrderImage, image_id)
-    if img is None or img.order_id != order_id:
+    if img is None or img.order_item_id != item_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "not_found")
     db.delete(img)
     db.commit()

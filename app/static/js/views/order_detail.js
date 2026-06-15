@@ -1,5 +1,5 @@
-// Order detail overlay: shows fields, components, and pictures (view/add/remove).
-// Opened from the Sales and Order/Stock reports.
+// Order detail overlay: order-level info plus each item (piece) with its
+// components and pictures. Opened from the Sales and Order/Stock reports.
 (function () {
   "use strict";
   const { el, clear, toast } = window.ui;
@@ -11,7 +11,7 @@
   }
 
   function overlay(children) {
-    const box = el("div", { class: "card", style: "width:820px;max-width:95vw;max-height:90vh;overflow:auto;" }, children);
+    const box = el("div", { class: "card", style: "width:860px;max-width:95vw;max-height:90vh;overflow:auto;" }, children);
     const back = el("div", {
       style: "position:fixed;inset:0;background:rgba(28,27,25,.45);display:flex;align-items:center;justify-content:center;z-index:900;",
       onclick: (e) => { if (e.target === back) back.remove(); },
@@ -20,17 +20,10 @@
     return back;
   }
 
-  async function open(orderId) {
-    const [o, comps, purs, cats, wts, sss] = await Promise.all([
-      api.get(`/api/orders/${orderId}`),
-      api.get("/api/component-types"), api.get("/api/purity-types"),
-      api.get("/api/item-categories"), api.get("/api/weight-types"), api.get("/api/supply-sources"),
-    ]);
-    const cust = await api.get(`/api/customers/${o.customer_id}`).catch(() => ({ name: "" }));
-
-    const itemsTable = el("table", {}, [
+  function pieceBlock(orderId, piece, comps, purs, cats, wts, sss) {
+    const compTable = el("table", {}, [
       el("thead", {}, el("tr", {}, ["Component", "Pcs", "Weight", "Purity", "Rate", "Price"].map((h) => el("th", {}, h)))),
-      el("tbody", {}, o.items.length ? o.items.map((it) => el("tr", {}, [
+      el("tbody", {}, piece.components.length ? piece.components.map((it) => el("tr", {}, [
         el("td", {}, nameOf(comps, it.component_type_id)),
         el("td", {}, it.pcs ?? "—"),
         el("td", {}, it.weight ?? "—"),
@@ -42,20 +35,21 @@
 
     const gallery = el("div", { style: "display:flex;gap:10px;flex-wrap:wrap;margin-top:8px;" });
     const fileInput = el("input", { type: "file", accept: "image/*", multiple: true, onchange: addImages });
+    const base = `/api/orders/${orderId}/items/${piece.id}/images`;
 
     async function loadImages() {
-      const imgs = await api.get(`/api/orders/${orderId}/images`);
+      const imgs = await api.get(base);
       clear(gallery);
       if (!imgs.length) gallery.appendChild(el("span", { class: "muted" }, "No pictures."));
       for (const img of imgs) {
-        const src = `/api/orders/${orderId}/images/${img.id}`;
+        const src = `${base}/${img.id}`;
         gallery.appendChild(el("div", { style: "position:relative;" }, [
           el("a", { href: src, target: "_blank", title: "Open full size" },
             el("img", { src, style: "width:96px;height:96px;object-fit:cover;border-radius:6px;border:1px solid var(--hairline);" })),
           el("button", { class: "remove-row-btn", title: "Delete picture",
             style: "position:absolute;top:-8px;right:-8px;background:#fff;border-radius:50%;",
             onclick: async () => {
-              try { await api.del(`/api/orders/${orderId}/images/${img.id}`); loadImages(); }
+              try { await api.del(`${base}/${img.id}`); loadImages(); }
               catch (e) { toast("Delete failed.", "error"); }
             } }, "×"),
         ]));
@@ -65,19 +59,50 @@
       const files = e.target.files;
       if (!files.length) return;
       const fd = new FormData();
-      for (const f of files) fd.append("files", f);
+      for (const file of files) fd.append("files", file);
       try {
-        const res = await fetch(`/api/orders/${orderId}/images`, { method: "POST", body: fd, credentials: "same-origin" });
+        const res = await fetch(base, { method: "POST", body: fd, credentials: "same-origin" });
         if (!res.ok) throw new Error();
         toast("Pictures added."); e.target.value = ""; loadImages();
       } catch (_) { toast("Upload failed.", "error"); }
     }
+
+    const block = el("div", { class: "card", style: "margin-top:12px;background:var(--paper-alt);" },
+      el("div", { class: "card-body" }, [
+        el("table", {}, el("tbody", {}, [
+          infoRow("Category", piece.item_category_id ? nameOf(cats, piece.item_category_id) : "—"),
+          infoRow("Item name", piece.item_name || "—"),
+          infoRow("Weight type", piece.weight_type_id ? nameOf(wts, piece.weight_type_id) : "—"),
+          infoRow("Supplied from", piece.supply_source_id ? nameOf(sss, piece.supply_source_id) : "—"),
+          infoRow("Subtotal", money(piece.subtotal)),
+        ])),
+        el("div", { class: "form-section-title" }, "Components"),
+        compTable,
+        el("div", { class: "form-section-title" }, "Pictures"),
+        gallery,
+        el("div", { style: "margin-top:10px;" }, fileInput),
+      ]));
+    loadImages();
+    return block;
+  }
+
+  async function open(orderId) {
+    const [o, comps, purs, cats, wts, sss, srcs] = await Promise.all([
+      api.get(`/api/orders/${orderId}`),
+      api.get("/api/component-types"), api.get("/api/purity-types"),
+      api.get("/api/item-categories"), api.get("/api/weight-types"),
+      api.get("/api/supply-sources"), api.get("/api/order-sources"),
+    ]);
+    const cust = await api.get(`/api/customers/${o.customer_id}`).catch(() => ({ name: "" }));
 
     let back;
     const editBtn = el("button", { class: "btn btn-sm", onclick: () => {
       if (back) back.remove();
       window.KhataApp.editOrder(o.id);
     } }, "Edit");
+
+    const itemsWrap = el("div", {}, [el("div", { class: "form-section-title" }, `Items (${o.items.length})`)]);
+    o.items.forEach((piece) => itemsWrap.appendChild(pieceBlock(o.id, piece, comps, purs, cats, wts, sss)));
 
     back = overlay([
       el("div", { class: "card-header" }, [
@@ -90,24 +115,17 @@
       el("div", { class: "card-body" }, [
         el("table", {}, el("tbody", {}, [
           infoRow("Date", o.order_date),
-          infoRow("Category", nameOf(cats, o.item_category_id)),
-          infoRow("Item name", o.item_name || "—"),
-          infoRow("Weight type", o.weight_type_id ? nameOf(wts, o.weight_type_id) : "—"),
-          infoRow("Supplied from", o.supply_source_id ? nameOf(sss, o.supply_source_id) : "—"),
+          infoRow("Source", o.source_id ? nameOf(srcs, o.source_id) : "—"),
+          infoRow("Reference", o.reference || "—"),
           infoRow("Order code", o.order_code || "—"),
           infoRow("Notes", o.notes || "—"),
           infoRow("Total", money(o.total_amount)),
           infoRow("Received", money(o.payment_received)),
           infoRow("Balance", money(o.balance)),
         ])),
-        el("div", { class: "form-section-title" }, "Components"),
-        itemsTable,
-        el("div", { class: "form-section-title" }, "Pictures"),
-        gallery,
-        el("div", { style: "margin-top:10px;" }, fileInput),
+        itemsWrap,
       ]),
     ]);
-    loadImages();
   }
 
   window.KhataOrderDetail = { open };

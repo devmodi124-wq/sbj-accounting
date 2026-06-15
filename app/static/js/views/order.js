@@ -1,15 +1,16 @@
-// New / Edit Order screen: customer search-or-create, category/weight/source
-// dropdowns, dynamic component rows, live totals, and multiple pictures.
+// New / Edit Order screen. An order has one or more *items* (pieces); each item
+// has its own category/weight/source, a component breakdown, and its own
+// pictures. Order-level fields: customer, date, status, source, reference, notes.
 (function () {
   "use strict";
   const { el, clear, toast, errorText } = window.ui;
 
-  let components = [], purities = [], categories = [], weights = [], supplies = [];
+  let components = [], purities = [], categories = [], weights = [], supplies = [], sources = [];
   let selectedCustomerId = null;
-  let selectedImages = [];     // new files to upload
   let editingOrderId = null;   // null = create mode
-  let rowsBody, totalEl, balanceEl, errorBanner, thumbs, existingWrap;
-  const f = {}; // form fields + title/buttons
+  let pieces = [];             // array of piece-card controllers
+  let piecesWrap, totalEl, balanceEl, errorBanner;
+  const f = {}; // order-level fields + title/buttons
 
   function money(n) {
     const v = Number(n) || 0;
@@ -29,22 +30,23 @@
     return c && /labour/i.test(c.name);
   }
 
-  function recompute() {
+  function recomputeAll() {
     let total = 0;
-    rowsBody.querySelectorAll("tr").forEach((tr) => { total += num(tr.querySelector(".price").value); });
+    pieces.forEach((p) => { total += p.recompute(); });
     const balance = total - num(f.received.value);
     totalEl.textContent = money(total);
     balanceEl.textContent = money(balance);
     balanceEl.classList.toggle("zero", Math.abs(balance) < 0.005);
   }
 
-  function componentRow(item) {
+  // ---- A single component row inside a piece ----
+  function componentRow(c) {
     const compSel = el("select", { class: "comp" }, options(components));
     const puritySel = el("select", { class: "purity" }, options(purities, "—"));
     const pcs = el("input", { type: "text", class: "pcs" });
     const weight = el("input", { type: "text", class: "amount-input weight" });
     const rate = el("input", { type: "text", class: "amount-input rate" });
-    const price = el("input", { type: "text", class: "amount-input price", oninput: recompute });
+    const price = el("input", { type: "text", class: "amount-input price", oninput: recomputeAll });
 
     function syncPurity() {
       const labour = isLabour(Number(compSel.value));
@@ -53,45 +55,171 @@
     }
     compSel.addEventListener("change", syncPurity);
 
-    if (item) {
-      compSel.value = String(item.component_type_id);
-      pcs.value = item.pcs ?? "";
-      weight.value = item.weight ?? "";
-      rate.value = item.rate ?? "";
-      price.value = item.price ?? "";
+    if (c) {
+      compSel.value = String(c.component_type_id);
+      pcs.value = c.pcs ?? "";
+      weight.value = c.weight ?? "";
+      rate.value = c.rate ?? "";
+      price.value = c.price ?? "";
     }
     syncPurity();
-    if (item && item.purity_type_id && !puritySel.disabled) puritySel.value = String(item.purity_type_id);
+    if (c && c.purity_type_id && !puritySel.disabled) puritySel.value = String(c.purity_type_id);
 
     const tr = el("tr", {}, [
       el("td", {}, compSel), el("td", {}, pcs), el("td", {}, weight),
       el("td", {}, puritySel), el("td", {}, rate), el("td", {}, price),
       el("td", { class: "col-remove" },
-        el("button", { class: "remove-row-btn", title: "Remove", onclick: () => { tr.remove(); recompute(); } }, "×")),
+        el("button", { class: "remove-row-btn", title: "Remove", onclick: () => { tr.remove(); recomputeAll(); } }, "×")),
     ]);
     return tr;
   }
-  function addRow(item) { rowsBody.appendChild(componentRow(item)); }
 
-  function collectItems() {
-    const items = [];
-    rowsBody.querySelectorAll("tr").forEach((tr) => {
-      const compId = Number(tr.querySelector(".comp").value);
-      if (!compId) return;
-      const purityVal = tr.querySelector(".purity").value;
-      const weightVal = tr.querySelector(".weight").value.trim();
-      const rateVal = tr.querySelector(".rate").value.trim();
-      const pcsVal = tr.querySelector(".pcs").value.trim();
-      items.push({
-        component_type_id: compId,
-        pcs: pcsVal ? parseInt(pcsVal, 10) : null,
-        weight: weightVal ? String(num(weightVal)) : null,
-        purity_type_id: purityVal ? Number(purityVal) : null,
-        rate: rateVal ? String(num(rateVal)) : null,
-        price: String(num(tr.querySelector(".price").value)),
+  // ---- A piece (item) card ----
+  function makePieceCard(data) {
+    const ctrl = { pieceId: data ? data.id : null, newFiles: [], images: (data && data.images) ? data.images.slice() : [] };
+    const nameInput = el("input", { type: "text", placeholder: "optional, e.g. Ladies ring with stone",
+      value: data ? (data.item_name || "") : "" });
+    const catSel = el("select", {}, options(categories, "Select category…"));
+    const wtSel = el("select", {}, options(weights, "—"));
+    const ssSel = el("select", {}, options(supplies, "—"));
+    if (data) {
+      catSel.value = data.item_category_id ? String(data.item_category_id) : "";
+      wtSel.value = data.weight_type_id ? String(data.weight_type_id) : "";
+      ssSel.value = data.supply_source_id ? String(data.supply_source_id) : "";
+    }
+
+    const rowsBody = el("tbody");
+    const subtotalEl = el("span", { class: "num", style: "font-weight:600;" }, "₹ 0");
+    const thumbs = el("div", { style: "display:flex;gap:10px;flex-wrap:wrap;margin-top:8px;" });
+    const existingWrap = el("div", { style: "display:flex;gap:10px;flex-wrap:wrap;margin-top:8px;" });
+    const fileInput = el("input", { type: "file", accept: "image/*", multiple: true, onchange: onPick });
+
+    function addRow(c) { rowsBody.appendChild(componentRow(c)); }
+    function onPick(e) { for (const file of e.target.files) ctrl.newFiles.push(file); e.target.value = ""; renderThumbs(); }
+    function renderThumbs() {
+      clear(thumbs);
+      ctrl.newFiles.forEach((file, idx) => {
+        const url = URL.createObjectURL(file);
+        thumbs.appendChild(el("div", { style: "position:relative;" }, [
+          el("img", { src: url, style: "width:64px;height:64px;object-fit:cover;border-radius:4px;border:1px solid var(--hairline);" }),
+          el("button", { class: "remove-row-btn", title: "Remove",
+            style: "position:absolute;top:-8px;right:-8px;background:#fff;border-radius:50%;",
+            onclick: () => { ctrl.newFiles.splice(idx, 1); renderThumbs(); } }, "×"),
+        ]));
       });
-    });
-    return items;
+    }
+    function renderExisting() {
+      clear(existingWrap);
+      if (!editingOrderId || !ctrl.pieceId) return;
+      ctrl.images.forEach((img) => {
+        const src = `/api/orders/${editingOrderId}/items/${ctrl.pieceId}/images/${img.id}`;
+        existingWrap.appendChild(el("div", { style: "position:relative;" }, [
+          el("a", { href: src, target: "_blank" },
+            el("img", { src, style: "width:64px;height:64px;object-fit:cover;border-radius:4px;border:1px solid var(--hairline);" })),
+          el("button", { class: "remove-row-btn", title: "Delete picture",
+            style: "position:absolute;top:-8px;right:-8px;background:#fff;border-radius:50%;",
+            onclick: async () => {
+              try {
+                await api.del(`/api/orders/${editingOrderId}/items/${ctrl.pieceId}/images/${img.id}`);
+                ctrl.images = ctrl.images.filter((x) => x.id !== img.id);
+                renderExisting();
+              } catch (_) { toast("Delete failed.", "error"); }
+            } }, "×"),
+        ]));
+      });
+    }
+
+    ctrl.recompute = function () {
+      let sub = 0;
+      rowsBody.querySelectorAll("tr").forEach((tr) => { sub += num(tr.querySelector(".price").value); });
+      subtotalEl.textContent = money(sub);
+      return sub;
+    };
+    ctrl.collect = function () {
+      const comps = [];
+      rowsBody.querySelectorAll("tr").forEach((tr) => {
+        const compId = Number(tr.querySelector(".comp").value);
+        if (!compId) return;
+        const purityVal = tr.querySelector(".purity").value;
+        const weightVal = tr.querySelector(".weight").value.trim();
+        const rateVal = tr.querySelector(".rate").value.trim();
+        const pcsVal = tr.querySelector(".pcs").value.trim();
+        comps.push({
+          component_type_id: compId,
+          pcs: pcsVal ? parseInt(pcsVal, 10) : null,
+          weight: weightVal ? String(num(weightVal)) : null,
+          purity_type_id: purityVal ? Number(purityVal) : null,
+          rate: rateVal ? String(num(rateVal)) : null,
+          price: String(num(tr.querySelector(".price").value)),
+        });
+      });
+      return {
+        id: ctrl.pieceId,
+        item_category_id: catSel.value ? Number(catSel.value) : null,
+        item_name: nameInput.value.trim() || null,
+        weight_type_id: wtSel.value ? Number(wtSel.value) : null,
+        supply_source_id: ssSel.value ? Number(ssSel.value) : null,
+        components: comps,
+      };
+    };
+    ctrl.hasCategory = function () { return !!catSel.value; };
+    ctrl.uploadNew = async function (orderId, pieceId) {
+      if (!ctrl.newFiles.length) return;
+      const fd = new FormData();
+      ctrl.newFiles.forEach((file) => fd.append("files", file));
+      await fetch(`/api/orders/${orderId}/items/${pieceId}/images`, { method: "POST", body: fd, credentials: "same-origin" });
+    };
+
+    const compTable = el("table", { class: "component-table" }, [
+      el("thead", {}, el("tr", {}, ["Component", "Pcs", "Weight (g)", "Purity", "Rate", "Price", ""].map((h) => el("th", {}, h)))),
+      rowsBody,
+    ]);
+
+    const removeBtn = el("button", { class: "btn btn-sm", style: "border-color:var(--red);color:var(--red);",
+      onclick: () => removePiece(ctrl) }, "Remove item");
+
+    ctrl.el = el("div", { class: "card", style: "margin-top:14px;background:var(--paper-alt);" },
+      el("div", { class: "card-body" }, [
+        el("div", { style: "display:flex;justify-content:space-between;align-items:center;" }, [
+          el("h3", { class: "piece-title", style: "margin:0;" }, "Item"),
+          removeBtn,
+        ]),
+        el("div", { class: "form-grid", style: "margin-top:10px;" }, [
+          field("Category *", catSel), field("Item name", nameInput),
+          field("Weight type", wtSel), field("Supplied from", ssSel),
+        ]),
+        el("div", { class: "form-section-title" }, "Components"),
+        compTable,
+        el("button", { class: "add-row-btn", onclick: () => { addRow(); recomputeAll(); } }, "+ Add component"),
+        el("div", { style: "text-align:right;margin-top:6px;" }, ["Item subtotal: ", subtotalEl]),
+        el("div", { class: "form-section-title" }, "Pictures"),
+        existingWrap, fileInput, thumbs,
+      ]));
+
+    // Populate components.
+    if (data && data.components && data.components.length) data.components.forEach((c) => addRow(c));
+    else addRow();
+    renderThumbs();
+    renderExisting();
+    return ctrl;
+  }
+
+  function renumberPieces() {
+    pieces.forEach((p, i) => { p.el.querySelector(".piece-title").textContent = `Item ${i + 1}`; });
+  }
+  function addPiece(data) {
+    const ctrl = makePieceCard(data || null);
+    pieces.push(ctrl);
+    piecesWrap.appendChild(ctrl.el);
+    renumberPieces();
+    recomputeAll();
+  }
+  function removePiece(ctrl) {
+    if (pieces.length <= 1) return toast("An order needs at least one item.", "error");
+    pieces = pieces.filter((p) => p !== ctrl);
+    ctrl.el.remove();
+    renumberPieces();
+    recomputeAll();
   }
 
   // ---- Customer type-ahead ----
@@ -120,81 +248,41 @@
     return wrap;
   }
 
-  // ---- Pictures ----
-  function onPickImages(e) {
-    for (const file of e.target.files) selectedImages.push(file);
-    e.target.value = "";
-    renderThumbs();
-  }
-  function renderThumbs() {
-    clear(thumbs);
-    selectedImages.forEach((file, idx) => {
-      const url = URL.createObjectURL(file);
-      thumbs.appendChild(el("div", { style: "position:relative;" }, [
-        el("img", { src: url, style: "width:64px;height:64px;object-fit:cover;border-radius:4px;border:1px solid var(--hairline);" }),
-        el("button", { class: "remove-row-btn", title: "Remove",
-          style: "position:absolute;top:-8px;right:-8px;background:#fff;border-radius:50%;",
-          onclick: () => { selectedImages.splice(idx, 1); renderThumbs(); } }, "×"),
-      ]));
-    });
-  }
-  async function loadExistingImages() {
-    clear(existingWrap);
-    if (!editingOrderId) return;
-    const imgs = await api.get(`/api/orders/${editingOrderId}/images`);
-    imgs.forEach((img) => {
-      const src = `/api/orders/${editingOrderId}/images/${img.id}`;
-      existingWrap.appendChild(el("div", { style: "position:relative;" }, [
-        el("a", { href: src, target: "_blank" },
-          el("img", { src, style: "width:64px;height:64px;object-fit:cover;border-radius:4px;border:1px solid var(--hairline);" })),
-        el("button", { class: "remove-row-btn", title: "Delete picture",
-          style: "position:absolute;top:-8px;right:-8px;background:#fff;border-radius:50%;",
-          onclick: async () => {
-            try { await api.del(`/api/orders/${editingOrderId}/images/${img.id}`); loadExistingImages(); }
-            catch (_) { toast("Delete failed.", "error"); }
-          } }, "×"),
-      ]));
-    });
-  }
-  async function uploadImages(orderId) {
-    if (!selectedImages.length) return;
-    const fd = new FormData();
-    selectedImages.forEach((file) => fd.append("files", file));
-    await fetch(`/api/orders/${orderId}/images`, { method: "POST", body: fd, credentials: "same-origin" });
-  }
-
   function setMode() {
     f.title.textContent = editingOrderId ? `Edit Order #${editingOrderId}` : "New Order";
     f.saveBtn.textContent = editingOrderId ? "Update Order" : "Save Order";
-    existingWrap.parentElement.classList.toggle("hidden", !editingOrderId);
   }
 
   async function save(asDraft) {
     errorBanner.classList.add("hidden");
     const name = f.customerInput.value.trim();
     if (!selectedCustomerId && !name) return toast("Choose or enter a customer.", "error");
-    if (!f.category.value) return toast("Item category is required.", "error");
+    if (!pieces.length) return toast("Add at least one item.", "error");
+    if (pieces.some((p) => !p.hasCategory())) return toast("Every item needs a category.", "error");
 
     const payload = {
       customer_id: selectedCustomerId,
       customer_name: selectedCustomerId ? null : name,
       order_date: f.date.value,
-      item_category_id: Number(f.category.value),
-      item_name: f.itemName.value.trim() || null,
-      weight_type_id: f.weight.value ? Number(f.weight.value) : null,
-      supply_source_id: f.supply.value ? Number(f.supply.value) : null,
       order_code: f.code.value.trim() || null,
       notes: f.notes.value.trim() || null,
+      reference: f.reference.value.trim() || null,
+      source_id: f.source.value ? Number(f.source.value) : null,
       status: asDraft ? "pending" : f.status.value,
       payment_received: String(num(f.received.value)),
       payment_mode: f.mode.value,
-      items: collectItems(),
+      items: pieces.map((p) => p.collect()),
     };
     try {
-      let order;
-      if (editingOrderId) order = await api.put(`/api/orders/${editingOrderId}`, payload);
-      else order = await api.post("/api/orders", payload);
-      await uploadImages(order.id);
+      const order = editingOrderId
+        ? await api.put(`/api/orders/${editingOrderId}`, payload)
+        : await api.post("/api/orders", payload);
+      // Upload each piece's new pictures to its saved item id (response items are
+      // ordered by sort_order, which matches the submission order).
+      for (let i = 0; i < pieces.length; i++) {
+        const item = order.items[i];
+        if (item) await pieces[i].uploadNew(order.id, item.id);
+      }
       toast(editingOrderId ? "Order updated." : (asDraft ? "Draft saved." : "Order saved."));
       reset();
     } catch (e) {
@@ -206,83 +294,67 @@
   function reset() {
     editingOrderId = null;
     selectedCustomerId = null;
-    selectedImages = [];
-    f.customerInput.value = ""; f.itemName.value = ""; f.code.value = "";
-    f.notes.value = ""; f.received.value = "0"; f.status.value = "pending";
-    f.mode.value = "cash"; f.category.value = ""; f.weight.value = ""; f.supply.value = "";
-    clear(rowsBody); addRow(); recompute();
-    renderThumbs();
-    clear(existingWrap);
+    f.customerInput.value = ""; f.code.value = ""; f.notes.value = "";
+    f.reference.value = ""; f.source.value = ""; f.received.value = "0";
+    f.status.value = "pending"; f.mode.value = "cash";
+    pieces = [];
+    clear(piecesWrap);
+    addPiece();
+    recomputeAll();
     setMode();
     errorBanner.classList.add("hidden");
+    window.scrollTo(0, 0);
   }
 
   async function edit(orderId) {
     const o = await api.get(`/api/orders/${orderId}`);
     editingOrderId = o.id;
-    selectedImages = [];
     let custName = "";
     try { custName = (await api.get(`/api/customers/${o.customer_id}`)).name; } catch (_) {}
     f.customerInput.value = custName;
     selectedCustomerId = o.customer_id;
     f.date.value = o.order_date;
-    f.category.value = o.item_category_id ? String(o.item_category_id) : "";
-    f.itemName.value = o.item_name || "";
-    f.weight.value = o.weight_type_id ? String(o.weight_type_id) : "";
-    f.supply.value = o.supply_source_id ? String(o.supply_source_id) : "";
     f.code.value = o.order_code || "";
     f.notes.value = o.notes || "";
+    f.reference.value = o.reference || "";
+    f.source.value = o.source_id ? String(o.source_id) : "";
     f.status.value = o.status;
     f.received.value = o.payment_received;
     f.mode.value = o.payment_mode || "cash";
-    clear(rowsBody);
-    if (o.items.length) o.items.forEach((it) => addRow(it)); else addRow();
-    renderThumbs();
-    await loadExistingImages();
+    pieces = [];
+    clear(piecesWrap);
+    if (o.items.length) o.items.forEach((it) => addPiece(it)); else addPiece();
     setMode();
-    recompute();
+    recomputeAll();
     window.scrollTo(0, 0);
   }
 
   async function mount(viewEl) {
-    [components, purities, categories, weights, supplies] = await Promise.all([
+    [components, purities, categories, weights, supplies, sources] = await Promise.all([
       api.get("/api/component-types?active_only=true"),
       api.get("/api/purity-types?active_only=true"),
       api.get("/api/item-categories?active_only=true"),
       api.get("/api/weight-types?active_only=true"),
       api.get("/api/supply-sources?active_only=true"),
+      api.get("/api/order-sources?active_only=true"),
     ]);
     f.date = el("input", { type: "date", value: new Date().toISOString().slice(0, 10) });
-    f.category = el("select", {}, options(categories, "Select category…"));
-    f.itemName = el("input", { type: "text", placeholder: "optional, e.g. Ladies ring with stone" });
-    f.weight = el("select", {}, options(weights, "—"));
-    f.supply = el("select", {}, options(supplies, "—"));
     f.code = el("input", { type: "text", placeholder: "optional" });
-    f.notes = el("input", { type: "text", placeholder: "reference / notes" });
+    f.notes = el("input", { type: "text", placeholder: "notes" });
+    f.reference = el("input", { type: "text", placeholder: "e.g. friends / family / referred by" });
+    f.source = el("select", {}, options(sources, "—"));
     f.status = el("select", {}, [el("option", { value: "pending" }, "Pending (in progress)"),
       el("option", { value: "delivered" }, "Delivered")]);
-    f.received = el("input", { type: "text", class: "num", value: "0", oninput: recompute });
+    f.received = el("input", { type: "text", class: "num", value: "0", oninput: recomputeAll });
     f.mode = el("select", {}, ["cash", "upi", "bank_transfer", "old_gold_exchange", "other"]
       .map((m) => el("option", { value: m }, m.replace(/_/g, " "))));
     f.title = el("h1", {}, "New Order");
     f.saveBtn = el("button", { class: "btn btn-primary", onclick: () => save(false) }, "Save Order");
 
-    rowsBody = el("tbody");
+    piecesWrap = el("div", {});
     totalEl = el("div", { class: "total-display num" }, "₹ 0");
     balanceEl = el("div", { class: "total-display balance num" }, "₹ 0");
     errorBanner = el("div", { class: "banner-error hidden" });
-    thumbs = el("div", { style: "display:flex;gap:10px;flex-wrap:wrap;margin-top:8px;" });
-    existingWrap = el("div", { style: "display:flex;gap:10px;flex-wrap:wrap;margin-top:8px;" });
-    const existingSection = el("div", { class: "hidden" }, [
-      el("div", { class: "muted", style: "font-size:12px;margin-top:8px;" }, "Existing pictures"), existingWrap,
-    ]);
-    const imgInput = el("input", { type: "file", accept: "image/*", multiple: true, onchange: onPickImages });
-
-    const compTable = el("table", { class: "component-table" }, [
-      el("thead", {}, el("tr", {}, ["Component", "Pcs", "Weight (g)", "Purity", "Rate", "Price", ""]
-        .map((h) => el("th", {}, h)))),
-      rowsBody,
-    ]);
 
     clear(viewEl).appendChild(el("div", {}, [
       el("div", { class: "topbar" }, el("div", {}, [
@@ -293,19 +365,15 @@
         el("div", { class: "form-grid" }, [
           field("Customer", customerSearch(), 2),
           field("Order date", f.date), field("Status", f.status),
-          field("Category *", f.category), field("Item name", f.itemName),
-          field("Weight type", f.weight), field("Supplied from", f.supply),
+          field("Source", f.source), field("Reference", f.reference),
           field("Order code", f.code), field("Notes", f.notes, 3),
         ]),
-        el("div", { class: "form-section-title" }, "Item components"),
-        compTable,
-        el("button", { class: "add-row-btn", onclick: () => addRow() }, "+ Add component"),
-        el("div", { class: "form-section-title" }, "Pictures"),
-        existingSection,
-        imgInput, thumbs,
+        el("div", { class: "form-section-title" }, "Items"),
+        piecesWrap,
+        el("button", { class: "add-row-btn", style: "margin-top:12px;", onclick: () => addPiece() }, "+ Add item"),
         el("div", { class: "form-section-title" }, "Payment"),
         el("div", { class: "totals-box" }, [
-          field("Total amount", totalEl),
+          field("Order total", totalEl),
           field("Payment received", f.received),
           field("Balance due", balanceEl),
           field("Payment mode", f.mode),
@@ -317,8 +385,8 @@
         ]),
       ])),
     ]));
-    addRow();
-    recompute();
+    addPiece();
+    recomputeAll();
     setMode();
   }
 

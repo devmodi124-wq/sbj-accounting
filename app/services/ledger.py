@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 
 from app.models import CashEntry, Customer, OpeningBalance, Order, Party, Purchase
 from app.models.base import BalanceDirection, CashEntryType, EntityType
+from app.services.orders import item_names_label
 
 ZERO = Decimal("0")
 _KIND_ORDER = {"opening": 0, "order": 1, "purchase": 1, "payment": 2, "cash": 2}
@@ -65,8 +66,9 @@ def customer_ledger(session: Session, customer_id: int) -> dict:
     entries = _opening_entries(session, EntityType.customer, customer_id, BalanceDirection.debit)
 
     for o in session.query(Order).filter(Order.customer_id == customer_id).all():
+        label = item_names_label(o) or "order"
         entries.append({"date": o.order_date, "kind": "order",
-                        "particulars": f"Order #{o.id} — {o.item_name}",
+                        "particulars": f"Order #{o.id} — {label}",
                         "debit": Decimal(o.total_amount or 0), "credit": ZERO})
         if o.payment_received:
             entries.append({"date": o.order_date, "kind": "payment",

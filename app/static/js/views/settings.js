@@ -238,6 +238,7 @@
         lookupCard("/api/item-categories", "Item categories"),
         lookupCard("/api/weight-types", "Weight types"),
         lookupCard("/api/supply-sources", "Supplied from"),
+        lookupCard("/api/order-sources", "Order sources"),
         lookupCard("/api/component-types", "Component types"),
         lookupCard("/api/purity-types", "Purity types"),
         usersCard(),

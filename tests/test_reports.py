@@ -29,12 +29,14 @@ def test_ageing_buckets():
 
 def test_sales_report_filter_by_status(admin_client):
     comps = _comp(admin_client)
-    admin_client.post("/api/orders", json={"customer_name": "A", "order_date": TODAY_S, "item_category_id": 1,
-        "item_name": "Ring", "status": "delivered", "payment_received": "0",
-        "items": [{"component_type_id": comps[0], "price": "1000"}]})
-    admin_client.post("/api/orders", json={"customer_name": "B", "order_date": TODAY_S, "item_category_id": 1,
-        "item_name": "Chain", "status": "pending", "payment_received": "0",
-        "items": [{"component_type_id": comps[0], "price": "2000"}]})
+    admin_client.post("/api/orders", json={"customer_name": "A", "order_date": TODAY_S,
+        "status": "delivered", "payment_received": "0",
+        "items": [{"item_category_id": 1, "item_name": "Ring",
+                   "components": [{"component_type_id": comps[0], "price": "1000"}]}]})
+    admin_client.post("/api/orders", json={"customer_name": "B", "order_date": TODAY_S,
+        "status": "pending", "payment_received": "0",
+        "items": [{"item_category_id": 1, "item_name": "Chain",
+                   "components": [{"component_type_id": comps[0], "price": "2000"}]}]})
     delivered = admin_client.get("/api/reports/sales", params={"status": "delivered"}).json()
     assert delivered["total"] == 1
     assert delivered["rows"][0]["item_name"] == "Ring"
@@ -45,11 +47,13 @@ def test_sales_report_has_category_and_filters(admin_client):
     ring, necklace = cats[0]["id"], cats[1]["id"]
     comps = _comp(admin_client)
     admin_client.post("/api/orders", json={"customer_name": "A", "order_date": TODAY_S,
-        "item_category_id": ring, "item_name": "R", "payment_received": "0",
-        "items": [{"component_type_id": comps[0], "price": "100"}]})
+        "payment_received": "0",
+        "items": [{"item_category_id": ring, "item_name": "R",
+                   "components": [{"component_type_id": comps[0], "price": "100"}]}]})
     admin_client.post("/api/orders", json={"customer_name": "B", "order_date": TODAY_S,
-        "item_category_id": necklace, "item_name": "N", "payment_received": "0",
-        "items": [{"component_type_id": comps[0], "price": "200"}]})
+        "payment_received": "0",
+        "items": [{"item_category_id": necklace, "item_name": "N",
+                   "components": [{"component_type_id": comps[0], "price": "200"}]}]})
 
     allrows = admin_client.get("/api/reports/sales").json()["rows"]
     assert {r["item_category"] for r in allrows} == {cats[0]["name"], cats[1]["name"]}
@@ -61,14 +65,15 @@ def test_sales_report_has_category_and_filters(admin_client):
 
 def test_sales_csv_export(admin_client):
     comps = _comp(admin_client)
-    admin_client.post("/api/orders", json={"customer_name": "CsvCust", "order_date": TODAY_S, "item_category_id": 1,
-        "item_name": "Ring", "status": "delivered", "payment_received": "500",
-        "items": [{"component_type_id": comps[0], "price": "1000"}]})
+    admin_client.post("/api/orders", json={"customer_name": "CsvCust", "order_date": TODAY_S,
+        "status": "delivered", "payment_received": "500",
+        "items": [{"item_category_id": 1, "item_name": "Ring",
+                   "components": [{"component_type_id": comps[0], "price": "1000"}]}]})
     r = admin_client.get("/api/reports/sales", params={"format": "csv"})
     assert r.status_code == 200
     assert r.headers["content-type"].startswith("text/csv")
     lines = r.text.strip().splitlines()
-    assert lines[0] == "Date,Customer,Category,Item,Total,Received,Balance,Status"
+    assert lines[0] == "Date,Customer,Category,Item,Items,Total,Received,Balance,Status"
     assert "CsvCust" in lines[1]
 
 
@@ -76,12 +81,14 @@ def test_sales_csv_export(admin_client):
 
 def test_debtors_report(admin_client):
     comps = _comp(admin_client)
-    admin_client.post("/api/orders", json={"customer_name": "Owes Money", "order_date": TODAY_S, "item_category_id": 1,
-        "item_name": "Ring", "payment_received": "300",
-        "items": [{"component_type_id": comps[0], "price": "1000"}]})
-    admin_client.post("/api/orders", json={"customer_name": "Paid Up", "order_date": TODAY_S, "item_category_id": 1,
-        "item_name": "Ring", "payment_received": "1000",
-        "items": [{"component_type_id": comps[0], "price": "1000"}]})
+    admin_client.post("/api/orders", json={"customer_name": "Owes Money", "order_date": TODAY_S,
+        "payment_received": "300",
+        "items": [{"item_category_id": 1, "item_name": "Ring",
+                   "components": [{"component_type_id": comps[0], "price": "1000"}]}]})
+    admin_client.post("/api/orders", json={"customer_name": "Paid Up", "order_date": TODAY_S,
+        "payment_received": "1000",
+        "items": [{"item_category_id": 1, "item_name": "Ring",
+                   "components": [{"component_type_id": comps[0], "price": "1000"}]}]})
     d = admin_client.get("/api/reports/debtors").json()
     names = [r["name"] for r in d["rows"]]
     assert "Owes Money" in names
@@ -104,9 +111,10 @@ def test_creditors_report(admin_client):
 def test_customer_report_avg(admin_client):
     comps = _comp(admin_client)
     for price in ("1000", "3000"):
-        admin_client.post("/api/orders", json={"customer_name": "Avg Cust", "order_date": TODAY_S, "item_category_id": 1,
-            "item_name": "Ring", "payment_received": "0",
-            "items": [{"component_type_id": comps[0], "price": price}]})
+        admin_client.post("/api/orders", json={"customer_name": "Avg Cust", "order_date": TODAY_S,
+            "payment_received": "0",
+            "items": [{"item_category_id": 1, "item_name": "Ring",
+                       "components": [{"component_type_id": comps[0], "price": price}]}]})
     rep = admin_client.get("/api/reports/customers", params={"search": "avg cust"}).json()
     row = rep["rows"][0]
     assert row["order_count"] == 2
@@ -123,9 +131,10 @@ def test_customer_ledger_running_balance(admin_client):
     admin_client.post("/api/ledgers/opening-balance", json={"entity_type": "customer",
         "entity_id": cid, "as_of_date": "2020-01-01", "amount": "1000", "direction": "debit"})
     # order total 5000, paid 2000
-    admin_client.post("/api/orders", json={"customer_id": cid, "order_date": TODAY_S, "item_category_id": 1,
-        "item_name": "Ring", "payment_received": "2000",
-        "items": [{"component_type_id": comps[0], "price": "5000"}]})
+    admin_client.post("/api/orders", json={"customer_id": cid, "order_date": TODAY_S,
+        "payment_received": "2000",
+        "items": [{"item_category_id": 1, "item_name": "Ring",
+                   "components": [{"component_type_id": comps[0], "price": "5000"}]}]})
     led = admin_client.get(f"/api/ledgers/customer/{cid}").json()
     balances = [e["balance"] for e in led["entries"]]
     assert balances == ["1000.00", "6000.00", "4000.00"]
