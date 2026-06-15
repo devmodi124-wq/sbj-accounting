@@ -10,7 +10,7 @@
     Net weight is metal weight
     It should be calculated automically
 
-[] Add more appropriate drop down filters on all reports.
-[] Export of reports must include all relevant fields.
-[] Export if possible must include picture of the product.
+[x] Add more appropriate drop down filters on all reports. (v1.1.1: Sales→Source, Stock→Category)
+[x] Export of reports must include all relevant fields. (v1.1.1)
+[x] Export if possible must include picture of the product. (v1.1.1: Excel export w/ thumbnails)
 [x] Sales entry should have the option of cash recieved. Automatic cash received entry (v1.1.0)

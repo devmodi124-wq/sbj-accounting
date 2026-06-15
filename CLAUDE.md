@@ -60,8 +60,8 @@ app/
   models/            # ORM package (user, masters, order, cash, purchase, ledger, system, auth)
   schemas/           # pydantic request/response models
   services/          # business logic: audit, matching, backdating, orders, cash, purchases,
-                     #   dashboard, reports, ledger, seed, settings_store, backup,
-                     #   import_template, import_data
+                     #   dashboard, reports, report_export (xlsx w/ thumbnails), ledger, seed,
+                     #   settings_store, backup, import_template, import_data
   auth/              # security (bcrypt), service (bootstrap/login/logout), deps (current user/admin)
   routers/           # auth, customers, parties, orders, cash, purchases, lookups, users,
                      #   settings, dashboard, reports, ledgers, import_, system

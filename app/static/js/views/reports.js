@@ -67,8 +67,8 @@
       state.offset = 0; load();
     }
 
-    function exportCsv() {
-      const p = params({ format: "csv" });
+    function exportAs(fmt) {
+      const p = params({ format: fmt });
       const a = el("a", { href: cfg.endpoint + "?" + p.toString(), download: "" });
       document.body.appendChild(a); a.click(); a.remove();
     }
@@ -102,7 +102,8 @@
       });
       controls.push(el("div", { class: "filter-spacer" }));
       if (footer) controls.push(footer);
-      controls.push(el("button", { class: "btn", onclick: exportCsv }, "⤓ Export"));
+      controls.push(el("button", { class: "btn", onclick: () => exportAs("csv"), title: "Download CSV" }, "⤓ CSV"));
+      controls.push(el("button", { class: "btn", onclick: () => exportAs("xlsx"), title: "Download Excel" }, "⤓ Excel"));
       return el("div", { class: "filter-bar" }, controls);
     }
 
@@ -152,11 +153,14 @@
     endpoint: "/api/reports/sales", title: "Sales Report", subtitle: "One row per order",
     hasSearch: false, hasDateRange: true, defaultSort: "order_date", orderDetail: true,
     statusOptions: [{ value: "delivered", label: "Delivered" }, { value: "pending", label: "Pending" }],
-    selectFilters: [{ param: "category_id", endpoint: "/api/item-categories", allLabel: "All categories" }],
+    selectFilters: [
+      { param: "category_id", endpoint: "/api/item-categories", allLabel: "All categories" },
+      { param: "source_id", endpoint: "/api/order-sources", allLabel: "All sources" },
+    ],
     columns: [
       { key: "order_date", label: "Date", sortable: true }, { key: "customer_name", label: "Customer", sortable: true },
       { key: "item_category", label: "Category" }, { key: "item_name", label: "Item" },
-      { key: "item_count", label: "Items", sortable: true },
+      { key: "item_count", label: "Items", sortable: true }, { key: "source", label: "Source" },
       { key: "total_amount", label: "Total", money: true, sortable: true },
       { key: "payment_received", label: "Received", money: true }, { key: "balance", label: "Balance", money: true, negIfPositive: true },
       { key: "status", label: "Status", pill: statusPill },
@@ -166,10 +170,11 @@
     endpoint: "/api/reports/stock", title: "Order / Stock Report", subtitle: "Work in progress",
     hasDateRange: true, defaultSort: "order_date", orderDetail: true,
     statusOptions: [{ value: "pending", label: "Pending" }, { value: "delivered", label: "Delivered" }],
+    selectFilters: [{ param: "category_id", endpoint: "/api/item-categories", allLabel: "All categories" }],
     columns: [
       { key: "order_date", label: "Date", sortable: true }, { key: "customer_name", label: "Customer" },
       { key: "item_category", label: "Category" }, { key: "item_name", label: "Item" },
-      { key: "item_count", label: "Items" }, { key: "components", label: "Components" },
+      { key: "item_count", label: "Items" }, { key: "source", label: "Source" },
       { key: "status", label: "Status", pill: statusPill }, { key: "days_pending", label: "Days pending", sortable: true },
     ],
   });

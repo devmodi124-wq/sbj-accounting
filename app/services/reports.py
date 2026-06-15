@@ -15,13 +15,31 @@ from typing import Optional
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.models import Customer, Order, Party, Purchase
+from app.models import Customer, Order, OrderImage, OrderItem, Party, Purchase
 from app.models.base import OrderStatus
 from app.services.orders import (
     categories_label,
     item_names_label,
     payment_modes_label,
 )
+
+
+def first_images(session: Session, order_ids: list[int]) -> dict[int, bytes]:
+    """First picture (by item then image sort order) for each given order id."""
+    if not order_ids:
+        return {}
+    rows = (
+        session.query(OrderItem.order_id, OrderImage.data)
+        .join(OrderImage, OrderImage.order_item_id == OrderItem.id)
+        .filter(OrderItem.order_id.in_(order_ids))
+        .order_by(OrderItem.order_id, OrderItem.sort_order, OrderImage.sort_order)
+        .all()
+    )
+    out: dict[int, bytes] = {}
+    for order_id, data in rows:
+        if order_id not in out:
+            out[order_id] = data
+    return out
 
 ZERO = Decimal("0")
 
@@ -83,6 +101,7 @@ def sales_report(
     date_to: Optional[date] = None,
     customer_id: Optional[int] = None,
     category_id: Optional[int] = None,
+    source_id: Optional[int] = None,
     status: Optional[OrderStatus] = None,
     sort: str = "order_date",
     direction: str = "desc",
@@ -96,6 +115,8 @@ def sales_report(
         q = q.filter(Order.order_date <= date_to)
     if customer_id:
         q = q.filter(Order.customer_id == customer_id)
+    if source_id:
+        q = q.filter(Order.source_id == source_id)
     if status:
         q = q.filter(Order.status == status)
     rows = []
@@ -130,6 +151,7 @@ def order_stock_report(
     status: Optional[OrderStatus] = None,
     date_from: Optional[date] = None,
     date_to: Optional[date] = None,
+    category_id: Optional[int] = None,
     sort: str = "order_date",
     direction: str = "desc",
     limit: int = 50,
@@ -146,6 +168,8 @@ def order_stock_report(
         q = q.filter(Order.order_date <= date_to)
     rows = []
     for o in q.all():
+        if category_id and not any(it.item_category_id == category_id for it in o.items):
+            continue
         days_pending = (today - o.order_date).days if o.status == OrderStatus.pending else 0
         rows.append({
             "id": o.id,
@@ -154,6 +178,8 @@ def order_stock_report(
             "item_category": categories_label(o),
             "item_name": item_names_label(o),
             "item_count": len(o.items),
+            "source": o.source.name if o.source else "",
+            "reference": o.reference or "",
             "status": o.status.value,
             "days_pending": days_pending,
         })
@@ -356,8 +382,8 @@ CSV_COLUMNS = {
               ("reference", "Reference"), ("total_amount", "Total"), ("payment_received", "Received"),
               ("payment_modes", "Modes"), ("balance", "Balance"), ("status", "Status")],
     "stock": [("order_date", "Date"), ("customer_name", "Customer"), ("item_category", "Category"),
-              ("item_name", "Item"), ("item_count", "Items"),
-              ("status", "Status"), ("days_pending", "Days pending")],
+              ("item_name", "Item"), ("item_count", "Items"), ("source", "Source"),
+              ("reference", "Reference"), ("status", "Status"), ("days_pending", "Days pending")],
     "debtors": [("name", "Customer"), ("phone", "Phone"), ("billed", "Total billed"),
                 ("received", "Received"), ("balance", "Balance"), ("last_txn", "Last txn"),
                 ("ageing", "Ageing")],
