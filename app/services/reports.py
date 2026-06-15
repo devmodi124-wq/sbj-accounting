@@ -101,6 +101,7 @@ def sales_report(
     date_to: Optional[date] = None,
     customer_id: Optional[int] = None,
     category_id: Optional[int] = None,
+    weight_type_id: Optional[int] = None,
     source_id: Optional[int] = None,
     status: Optional[OrderStatus] = None,
     sort: str = "order_date",
@@ -121,8 +122,10 @@ def sales_report(
         q = q.filter(Order.status == status)
     rows = []
     for o in q.all():
-        # An order can span several categories; filter on any matching piece.
+        # An order can span several categories/weights; filter on any matching piece.
         if category_id and not any(it.item_category_id == category_id for it in o.items):
+            continue
+        if weight_type_id and not any(it.weight_type_id == weight_type_id for it in o.items):
             continue
         rows.append({
             "id": o.id,

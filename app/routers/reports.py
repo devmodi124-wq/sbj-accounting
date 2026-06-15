@@ -57,6 +57,7 @@ def sales(
     date_to: Optional[date] = None,
     customer_id: Optional[int] = None,
     category_id: Optional[int] = None,
+    weight_type_id: Optional[int] = None,
     source_id: Optional[int] = None,
     status: Optional[OrderStatus] = None,
     sort: str = "order_date",
@@ -69,7 +70,8 @@ def sales(
 ):
     data = reports.sales_report(
         db, date_from=date_from, date_to=date_to, customer_id=customer_id,
-        category_id=category_id, source_id=source_id, status=status, sort=sort, direction=direction,
+        category_id=category_id, weight_type_id=weight_type_id, source_id=source_id,
+        status=status, sort=sort, direction=direction,
         limit=(100000 if _is_file(format) else limit), offset=offset,
     )
     if _is_file(format):

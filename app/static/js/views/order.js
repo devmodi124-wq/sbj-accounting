@@ -216,7 +216,8 @@
   // ---- Payment lines ----
   function makePaymentRow(data) {
     const modeSel = el("select", {}, MODES.map((m) => el("option", { value: m }, m.replace(/_/g, " "))));
-    const amountInput = el("input", { type: "text", class: "num", value: data ? (data.amount ?? "") : "", oninput: recomputeAll });
+    const amountInput = el("input", { type: "text", class: "num amount-input", placeholder: "amount",
+      value: data ? (data.amount ?? "") : "", oninput: recomputeAll });
     if (data && data.mode) modeSel.value = data.mode;
     const ctrl = { modeSel, amountInput };
     ctrl.collect = function () {
@@ -224,7 +225,7 @@
       if (amt <= 0) return null;
       return { mode: modeSel.value, amount: String(amt) };
     };
-    ctrl.el = el("div", { style: "display:flex;gap:8px;align-items:center;margin-bottom:6px;" }, [
+    ctrl.el = el("div", { class: "inline-row" }, [
       modeSel, amountInput,
       el("button", { class: "remove-row-btn", title: "Remove", onclick: () => removePayment(ctrl) }, "×"),
     ]);

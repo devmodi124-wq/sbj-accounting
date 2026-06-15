@@ -155,6 +155,7 @@
     statusOptions: [{ value: "delivered", label: "Delivered" }, { value: "pending", label: "Pending" }],
     selectFilters: [
       { param: "category_id", endpoint: "/api/item-categories", allLabel: "All categories" },
+      { param: "weight_type_id", endpoint: "/api/weight-types", allLabel: "All weights" },
       { param: "source_id", endpoint: "/api/order-sources", allLabel: "All sources" },
     ],
     columns: [

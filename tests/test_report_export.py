@@ -34,6 +34,18 @@ def test_sales_filter_by_source(admin_client):
     assert filtered["total"] == 1
 
 
+def test_sales_filter_by_weight_type(admin_client):
+    cat = admin_client.get("/api/item-categories").json()[0]["id"]
+    weights = admin_client.get("/api/weight-types").json()
+    w0, w1 = weights[0]["id"], weights[1]["id"]
+    _order(admin_client, items=[{"item_category_id": cat, "weight_type_id": w0,
+                                 "gross_weight": "1", "metal_rate": "1"}])
+    _order(admin_client, items=[{"item_category_id": cat, "weight_type_id": w1,
+                                 "gross_weight": "1", "metal_rate": "1"}])
+    filtered = admin_client.get("/api/reports/sales", params={"weight_type_id": w0}).json()
+    assert filtered["total"] == 1
+
+
 def test_stock_filter_by_category(admin_client):
     cats = admin_client.get("/api/item-categories").json()
     ring, necklace = cats[0]["id"], cats[1]["id"]
