@@ -159,9 +159,19 @@ for off‑machine safety). Configure the path under Settings and use **Backup no
 ## Packaging (Windows `.exe`)
 
 The Windows executable is built in CI (`.github/workflows/build-windows.yml`): push a `v*` tag or run
-the workflow manually. It installs `sqlcipher3-binary`, runs smoke tests, builds with
-`pyinstaller khata.spec`, and uploads `Khata.exe` as an artifact. Do not build the Windows exe on
-macOS.
+the workflow manually. It installs `sqlcipher3-wheels`, runs smoke tests, builds with
+`pyinstaller khata.spec`, and uploads `Khata.exe`. Do not build the Windows exe on macOS.
+
+### Download the latest build
+
+On every `v*` tag, CI also publishes a **GitHub Release** with `Khata.exe` attached, so these links
+always point at the newest version (no need to hunt through Actions runs):
+
+- Latest release page: <https://github.com/devmodi124-wq/sbj-accounting/releases/latest>
+- Direct download: <https://github.com/devmodi124-wq/sbj-accounting/releases/latest/download/Khata.exe>
+
+Because the repo is **private**, both require being signed in to GitHub as a user with access (or a
+token). Per-run artifacts are still uploaded too, but they expire after 90 days and have no stable URL.
 
 ---
 
