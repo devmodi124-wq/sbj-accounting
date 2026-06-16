@@ -8,6 +8,7 @@ same matching as manual entry (:mod:`app.services.matching`).
 from __future__ import annotations
 
 import io
+import zipfile
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from typing import Optional
@@ -19,6 +20,7 @@ from app.models import (
     CashEntry,
     ItemCategory,
     Order,
+    OrderImage,
     OrderItem,
     OrderPayment,
     OrderSource,
@@ -54,6 +56,49 @@ VALID_PAYMENT = {m.value for m in PaymentMode}
 VALID_CASH = {t.value for t in CashEntryType}
 VALID_ENTITY = {e.value for e in EntityType}
 VALID_DIRECTION = {d.value for d in BalanceDirection}
+
+_IMAGE_EXTS = (".png", ".jpg", ".jpeg", ".webp", ".gif")
+_IMAGE_MIME = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+               ".webp": "image/webp", ".gif": "image/gif"}
+MAX_IMAGES_PER_ITEM = 12
+
+
+def split_upload(data: bytes) -> tuple[bytes, dict[str, bytes]]:
+    """Split an upload into (workbook bytes, {filename_lower: bytes}).
+
+    Accepts either a plain ``.xlsx`` or a ``.zip`` bundle containing the workbook
+    plus an ``images/`` folder. (An ``.xlsx`` is itself a zip, so a bundle is
+    detected by the presence of a ``.xlsx`` member inside it.)
+    """
+    try:
+        zf = zipfile.ZipFile(io.BytesIO(data))
+        names = zf.namelist()
+    except zipfile.BadZipFile:
+        return data, {}
+    xlsx_members = [n for n in names if n.lower().endswith(".xlsx")]
+    if not xlsx_members:
+        return data, {}  # a plain .xlsx workbook
+    workbook = zf.read(xlsx_members[0])
+    images: dict[str, bytes] = {}
+    for n in names:
+        if n.lower().endswith(_IMAGE_EXTS):
+            images[_img_key(n)] = zf.read(n)
+    return workbook, images
+
+
+def _img_key(name: str) -> str:
+    """Lowercased basename used to match a sheet filename to a bundled image."""
+    return name.rsplit("/", 1)[-1].rsplit("\\", 1)[-1].strip().lower()
+
+
+def _image_names(value) -> list[str]:
+    """Parse the Orders 'images' cell into filenames (separated by ; or ,)."""
+    return [p.strip() for p in _s(value).replace(",", ";").split(";") if p.strip()]
+
+
+def _guess_mime(filename: str) -> str:
+    ext = ("." + filename.rsplit(".", 1)[-1].lower()) if "." in filename else ""
+    return _IMAGE_MIME.get(ext, "image/jpeg")
 
 
 def _s(value) -> str:
@@ -97,8 +142,9 @@ def parse_workbook(data: bytes) -> dict[str, list[dict]]:
     return out
 
 
-def validate(session: Session, sheets: dict[str, list[dict]]) -> dict:
+def validate(session: Session, sheets: dict[str, list[dict]], images: dict | None = None) -> dict:
     errors: list[dict] = []
+    available = set(images or {})
 
     def err(sheet, row, msg):
         errors.append({"sheet": sheet, "row": row, "message": msg})
@@ -142,6 +188,14 @@ def validate(session: Session, sheets: dict[str, list[dict]]) -> dict:
         mode = _s(row.get("payment_mode")).lower()
         if mode and mode not in VALID_PAYMENT:
             err("Orders", i, f"invalid payment_mode '{mode}'")
+        names = _image_names(row.get("images"))
+        if len(names) > MAX_IMAGES_PER_ITEM:
+            err("Orders", i, f"too many images ({len(names)} > {MAX_IMAGES_PER_ITEM})")
+        for fname in names:
+            if not fname.lower().endswith(_IMAGE_EXTS):
+                err("Orders", i, f"'{fname}' is not an image file (png/jpg/jpeg/webp/gif)")
+            elif _img_key(fname) not in available:
+                err("Orders", i, f"image '{fname}' not found in the uploaded .zip")
         for fld in ("payment_received",) + _WEIGHT_FIELDS + _RATE_FIELDS:
             if _parse_decimal(row.get(fld)) is None:
                 err("Orders", i, f"{fld} is not a number")
@@ -176,18 +230,22 @@ def validate(session: Session, sheets: dict[str, list[dict]]) -> dict:
             err("Opening Balances", i, "as_of_date missing or not YYYY-MM-DD")
 
     summary = {title: len(rows) for title, rows in sheets.items()}
+    if available:
+        summary["Images"] = len(available)
     return {"ok": len(errors) == 0, "errors": errors, "summary": summary}
 
 
-def commit(session: Session, user: User, sheets: dict[str, list[dict]], today: Optional[date] = None) -> dict:
+def commit(session: Session, user: User, sheets: dict[str, list[dict]],
+           images: dict | None = None, today: Optional[date] = None) -> dict:
     """Apply a validated import in one transaction. Raises on error (rolled back)."""
     today = today or date.today()
+    images = images or {}
     purity_by_name = {p.name.strip().lower(): p for p in session.query(PurityType).all()}
     category_by_name = {c.name.strip().lower(): c for c in session.query(ItemCategory).all()}
     weight_by_name = {w.name.strip().lower(): w for w in session.query(WeightType).all()}
     supply_by_name = {s.name.strip().lower(): s for s in session.query(SupplySource).all()}
     source_by_name = {s.name.strip().lower(): s for s in session.query(OrderSource).all()}
-    counts = {"customers": 0, "parties": 0, "orders": 0,
+    counts = {"customers": 0, "parties": 0, "orders": 0, "images": 0,
               "cash_entries": 0, "purchases": 0, "opening_balances": 0}
 
     try:
@@ -256,6 +314,19 @@ def commit(session: Session, user: User, sheets: dict[str, list[dict]], today: O
             piece.net_weight = net
             piece.subtotal = compute_subtotal(piece, net)
             session.add(piece)
+            session.flush()  # need piece.id to attach its pictures
+            for idx, fname in enumerate(_image_names(row.get("images"))):
+                blob = images.get(_img_key(fname))
+                if blob is None:
+                    continue
+                session.add(OrderImage(
+                    order_item_id=piece.id,
+                    filename=fname.rsplit("/", 1)[-1].rsplit("\\", 1)[-1],
+                    mime=_guess_mime(fname),
+                    data=blob,
+                    sort_order=idx,
+                ))
+                counts["images"] += 1
             if received > 0:
                 session.add(OrderPayment(
                     order_id=order.id,

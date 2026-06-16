@@ -14,3 +14,4 @@
 [x] Export of reports must include all relevant fields. (v1.1.1)
 [x] Export if possible must include picture of the product. (v1.1.1: Excel export w/ thumbnails)
 [x] Sales entry should have the option of cash recieved. Automatic cash received entry (v1.1.0)
+[x] Import pictures per item via ZIP bundle (workbook + images/ + 'images' column) (v1.1.4)

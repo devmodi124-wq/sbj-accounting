@@ -24,9 +24,11 @@ def download_template(db: Session = Depends(get_db), _admin: User = Depends(requ
     )
 
 
-async def _read_sheets(file: UploadFile) -> dict:
+async def _read_upload(file: UploadFile) -> tuple[dict, dict]:
+    """Return (sheets, images). Accepts a plain .xlsx or a .zip bundle (.xlsx + images/)."""
     try:
-        return import_data.parse_workbook(await file.read())
+        workbook, images = import_data.split_upload(await file.read())
+        return import_data.parse_workbook(workbook), images
     except Exception:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "could_not_read_workbook")
 
@@ -35,16 +37,16 @@ async def _read_sheets(file: UploadFile) -> dict:
 async def validate_upload(
     file: UploadFile, db: Session = Depends(get_db), _admin: User = Depends(require_admin)
 ) -> dict:
-    sheets = await _read_sheets(file)
-    return import_data.validate(db, sheets)
+    sheets, images = await _read_upload(file)
+    return import_data.validate(db, sheets, images)
 
 
 @router.post("/commit")
 async def commit_upload(
     file: UploadFile, db: Session = Depends(get_db), admin: User = Depends(require_admin)
 ) -> dict:
-    sheets = await _read_sheets(file)
-    report = import_data.validate(db, sheets)
+    sheets, images = await _read_upload(file)
+    report = import_data.validate(db, sheets, images)
     if not report["ok"]:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "validation_failed")
-    return import_data.commit(db, admin, sheets)
+    return import_data.commit(db, admin, sheets, images)

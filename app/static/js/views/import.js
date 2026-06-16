@@ -14,7 +14,7 @@
   }
 
   function mount(viewEl) {
-    const fileInput = el("input", { type: "file", accept: ".xlsx" });
+    const fileInput = el("input", { type: "file", accept: ".xlsx,.zip" });
     const report = el("div", {});
     const commitBtn = el("button", { class: "btn btn-primary", disabled: true, onclick: commit }, "Import data");
     let lastValid = false;
@@ -67,6 +67,7 @@
         el("h1", {}, "Import"), el("div", { class: "meta" }, "Bulk-import historical data from Excel")])),
       el("div", { class: "card" }, el("div", { class: "card-body" }, [
         el("p", { class: "muted" }, "1. Download the template and fill it in. 2. Upload and validate. 3. Import."),
+        el("p", { class: "muted" }, "To include pictures: list filenames in the 'images' column (separate with ;), put the photos in an 'images' folder, ZIP it with the workbook, and upload the .zip."),
         el("div", { class: "form-actions", style: "justify-content:flex-start;border:none;padding:0;margin:0 0 16px;" },
           el("button", { class: "btn", onclick: downloadTemplate }, "⤓ Download template")),
         el("div", { class: "filter-bar" }, [fileInput,

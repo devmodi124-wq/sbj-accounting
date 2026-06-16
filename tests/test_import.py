@@ -1,13 +1,19 @@
-"""Phase 8 — Excel import: template, validation, commit."""
+"""Phase 8 — Excel import: template, validation, commit (+ picture ZIP bundles)."""
 from __future__ import annotations
 
 import io
+import zipfile
 
 from openpyxl import Workbook, load_workbook
 
 from app.services.import_template import SHEETS
 
 XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+PNG = bytes.fromhex(
+    "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4"
+    "890000000a49444154789c6360000002000154a24f600000000049454e44ae426082"
+)
 
 
 def make_xlsx(data: dict) -> bytes:
@@ -20,6 +26,16 @@ def make_xlsx(data: dict) -> bytes:
             ws.append([row.get(h, "") for h in headers])
     buf = io.BytesIO()
     wb.save(buf)
+    return buf.getvalue()
+
+
+def make_zip(data: dict, images: dict[str, bytes]) -> bytes:
+    """Bundle a filled workbook + an images/ folder into a .zip upload."""
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr("khata-import.xlsx", make_xlsx(data))
+        for name, blob in images.items():
+            zf.writestr(f"images/{name}", blob)
     return buf.getvalue()
 
 
@@ -107,6 +123,48 @@ def test_commit_reuses_existing_customer(admin_client):
     _upload(admin_client, "/api/import/commit", make_xlsx(data))
     matches = admin_client.get("/api/customers", params={"q": "existing cust"}).json()
     assert len([c for c in matches if c["name"].lower() == "existing cust"]) == 1
+
+
+def _zip_upload(client, url, content):
+    return client.post(url, files={"file": ("import.zip", content, "application/zip")})
+
+
+def test_zip_bundle_imports_pictures(admin_client):
+    data = {"Orders": [{"order_ref": "P1", "customer_name": "Pic Cust", "order_date": "2026-06-01",
+                        "item_category": "Ring", "gross_weight": "100", "metal_rate": "1",
+                        "status": "delivered", "images": "ring1.png;ring2.png"}]}
+    content = make_zip(data, {"ring1.png": PNG, "ring2.png": PNG})
+
+    assert _zip_upload(admin_client, "/api/import/validate", content).json()["ok"] is True
+    imported = _zip_upload(admin_client, "/api/import/commit", content).json()["imported"]
+    assert imported["orders"] == 1
+    assert imported["images"] == 2
+
+    order = admin_client.get("/api/orders").json()[0]
+    oid = order["id"]
+    iid = admin_client.get(f"/api/orders/{oid}").json()["items"][0]["id"]
+    imgs = admin_client.get(f"/api/orders/{oid}/items/{iid}/images").json()
+    assert len(imgs) == 2
+
+
+def test_missing_picture_reported(admin_client):
+    data = {"Orders": [{"order_ref": "P1", "customer_name": "Pic Cust", "order_date": "2026-06-01",
+                        "item_category": "Ring", "gross_weight": "100", "metal_rate": "1",
+                        "images": "present.png;missing.png"}]}
+    content = make_zip(data, {"present.png": PNG})   # missing.png not bundled
+    body = _zip_upload(admin_client, "/api/import/validate", content).json()
+    assert body["ok"] is False
+    assert any("missing.png" in e["message"] for e in body["errors"])
+
+
+def test_plain_xlsx_with_image_names_but_no_zip_errors(admin_client):
+    # Listing images in a plain .xlsx (no bundle) should fail validation, not crash.
+    data = {"Orders": [{"order_ref": "P1", "customer_name": "Pic Cust", "order_date": "2026-06-01",
+                        "item_category": "Ring", "gross_weight": "100", "metal_rate": "1",
+                        "images": "ring1.png"}]}
+    body = _upload(admin_client, "/api/import/validate", make_xlsx(data)).json()
+    assert body["ok"] is False
+    assert any("not found" in e["message"] for e in body["errors"])
 
 
 def test_import_requires_admin(admin_client):
