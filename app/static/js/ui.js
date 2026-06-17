@@ -53,6 +53,7 @@
       cannot_demote_self: "You can't change your own role.",
       has_references: "This record has linked orders/transactions and can't be deleted.",
       admin_required: "Only an admin can do this.",
+      auto_entry_locked: "This cash entry came from a sale — edit or delete that order instead.",
     };
     return map[e && e.detail] || (e && e.message) || "Something went wrong.";
   }

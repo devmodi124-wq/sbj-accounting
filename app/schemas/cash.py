@@ -31,3 +31,5 @@ class CashEntryOut(BaseModel):
     entry_type: CashEntryType
     amount: Decimal
     is_backdated: bool
+    auto_generated: bool = False
+    order_id: int | None = None

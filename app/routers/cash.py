@@ -50,5 +50,20 @@ def update_cash(
         return cash_service.update_cash_entry(db, user, entry_id, payload)
     except cash_service.CashEntryNotFound:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "not_found")
+    except cash_service.CashEntryLocked:
+        raise HTTPException(status.HTTP_409_CONFLICT, "auto_entry_locked")
     except BackdateNotAllowed as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
+
+
+@router.delete("/{entry_id}")
+def delete_cash(
+    entry_id: int, db: Session = Depends(get_db), _user: User = Depends(get_current_user)
+) -> dict:
+    try:
+        cash_service.delete_cash_entry(db, entry_id)
+    except cash_service.CashEntryNotFound:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "not_found")
+    except cash_service.CashEntryLocked:
+        raise HTTPException(status.HTTP_409_CONFLICT, "auto_entry_locked")
+    return {"ok": True}

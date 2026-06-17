@@ -15,6 +15,11 @@ class CashEntryNotFound(Exception):
     pass
 
 
+class CashEntryLocked(Exception):
+    """Auto-generated entries (mirrors of a sale's cash payment) can't be edited
+    or deleted directly — change the originating order instead."""
+
+
 def _populate(entry: CashEntry, data: CashEntryIn, today: date) -> None:
     entry.entry_date = data.entry_date
     entry.person_name = data.person_name or ""
@@ -46,8 +51,20 @@ def update_cash_entry(
     entry = session.get(CashEntry, entry_id)
     if entry is None:
         raise CashEntryNotFound()
+    if entry.auto_generated:
+        raise CashEntryLocked()
     assert_backdate_allowed(session, user, data.entry_date, today)
     _populate(entry, data, today)
     session.commit()
     session.refresh(entry)
     return entry
+
+
+def delete_cash_entry(session: Session, entry_id: int) -> None:
+    entry = session.get(CashEntry, entry_id)
+    if entry is None:
+        raise CashEntryNotFound()
+    if entry.auto_generated:
+        raise CashEntryLocked()
+    session.delete(entry)
+    session.commit()

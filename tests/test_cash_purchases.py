@@ -46,6 +46,36 @@ def test_employee_cannot_backdate_cash(admin_client):
 
 # ===== Purchases =====
 
+def test_cash_edit_and_delete(admin_client):
+    eid = admin_client.post("/api/cash", json={
+        "entry_date": TODAY, "person_name": "X", "entry_type": "received", "amount": "100"}).json()["id"]
+    admin_client.put(f"/api/cash/{eid}", json={
+        "entry_date": TODAY, "person_name": "X", "entry_type": "received", "amount": "250"})
+    assert [e for e in admin_client.get("/api/cash").json() if e["id"] == eid][0]["amount"] == "250.00"
+    assert admin_client.delete(f"/api/cash/{eid}").status_code == 200
+    assert all(e["id"] != eid for e in admin_client.get("/api/cash").json())
+
+
+def test_auto_cash_entry_is_locked(admin_client):
+    cat = admin_client.get("/api/item-categories").json()[0]["id"]
+    admin_client.post("/api/orders", json={
+        "customer_name": "Auto", "order_date": TODAY, "payments": [{"mode": "cash", "amount": "500"}],
+        "items": [{"item_category_id": cat, "gross_weight": "1", "metal_rate": "500"}]})
+    auto = [e for e in admin_client.get("/api/cash").json() if e["auto_generated"]]
+    assert auto and auto[0]["order_id"]
+    eid = auto[0]["id"]
+    assert admin_client.delete(f"/api/cash/{eid}").status_code == 409
+    assert admin_client.put(f"/api/cash/{eid}", json={
+        "entry_date": TODAY, "person_name": "x", "entry_type": "received", "amount": "1"}).status_code == 409
+
+
+def test_purchase_delete(admin_client):
+    pid = admin_client.post("/api/purchases", json={
+        "purchase_date": TODAY, "party_name": "DelSupp", "amount": "100", "amount_paid": "0"}).json()["id"]
+    assert admin_client.delete(f"/api/purchases/{pid}").status_code == 200
+    assert all(p["id"] != pid for p in admin_client.get("/api/purchases").json())
+
+
 def test_create_purchase_derives_balance_and_status(admin_client):
     r = admin_client.post("/api/purchases", json={
         "purchase_date": TODAY, "party_name": "Mannu (Jaipur)",

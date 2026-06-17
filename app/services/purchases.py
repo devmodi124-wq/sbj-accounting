@@ -71,3 +71,11 @@ def update_purchase(
     session.commit()
     session.refresh(purchase)
     return purchase
+
+
+def delete_purchase(session: Session, purchase_id: int) -> None:
+    purchase = session.get(Purchase, purchase_id)
+    if purchase is None:
+        raise PurchaseNotFound()
+    session.delete(purchase)
+    session.commit()
