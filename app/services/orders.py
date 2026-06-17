@@ -149,8 +149,10 @@ def _apply_payments(session: Session, order: Order, data: OrderIn) -> None:
 
 
 def _sync_auto_cash(session: Session, order: Order, customer: Customer, today: date) -> None:
-    """Mirror the order's cash-mode payments into one auto cash-book entry."""
-    cash_total = sum(
+    """Mirror the order's cash-mode payments into one auto cash-book entry.
+
+    A cancelled order contributes no cash (its mirror is removed)."""
+    cash_total = ZERO if order.is_cancelled else sum(
         (p.amount or ZERO for p in order.payments if p.mode == PaymentMode.cash), ZERO
     )
     existing = (
@@ -240,6 +242,38 @@ def update_order(
     session.commit()
     session.refresh(order)
     return order
+
+
+def set_cancelled(
+    session: Session, user: User, order_id: int, cancelled: bool, today: Optional[date] = None
+) -> Order:
+    """Soft-void (or restore) an order; reconcile its cash-book mirror."""
+    today = today or date.today()
+    order = session.get(Order, order_id)
+    if order is None:
+        raise OrderNotFound()
+    order.is_cancelled = cancelled
+    customer = order.customer or session.get(Customer, order.customer_id)
+    _sync_auto_cash(session, order, customer, today)
+    session.commit()
+    session.refresh(order)
+    return order
+
+
+def delete_order(session: Session, order_id: int) -> None:
+    """Permanently delete an order (cascades items/payments/pictures) and remove
+    its mirrored cash entry."""
+    order = session.get(Order, order_id)
+    if order is None:
+        raise OrderNotFound()
+    for ce in (
+        session.query(CashEntry)
+        .filter(CashEntry.order_id == order_id, CashEntry.auto_generated.is_(True))
+        .all()
+    ):
+        session.delete(ce)
+    session.delete(order)
+    session.commit()
 
 
 # ===== Read-side helpers (used by lists/reports/dashboard) =====

@@ -65,7 +65,11 @@ def customer_ledger(session: Session, customer_id: int) -> dict:
         raise LookupError("customer_not_found")
     entries = _opening_entries(session, EntityType.customer, customer_id, BalanceDirection.debit)
 
-    for o in session.query(Order).filter(Order.customer_id == customer_id).all():
+    for o in (
+        session.query(Order)
+        .filter(Order.customer_id == customer_id, Order.is_cancelled.is_(False))
+        .all()
+    ):
         label = item_names_label(o) or "order"
         entries.append({"date": o.order_date, "kind": "order",
                         "particulars": f"Order #{o.id} — {label}",

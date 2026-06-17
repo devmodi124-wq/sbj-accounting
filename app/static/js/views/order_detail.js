@@ -120,7 +120,8 @@
       el("div", { class: "card-header" }, [
         el("h2", {}, `Order #${o.id} — ${cust.name || ""}`),
         el("div", { style: "display:flex;gap:8px;align-items:center;" }, [
-          el("span", { class: "pill " + (o.status === "delivered" ? "pill-green" : "pill-copper") }, o.status),
+          el("span", { class: "pill " + (o.is_cancelled ? "pill-muted" : o.status === "delivered" ? "pill-green" : "pill-copper") },
+            o.is_cancelled ? "cancelled" : o.status),
           editBtn,
         ]),
       ]),

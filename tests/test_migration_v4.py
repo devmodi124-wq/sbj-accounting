@@ -41,9 +41,10 @@ def _downgrade_to_legacy(engine, customer_id, category_id, component_id):
             conn.exec_driver_sql(f"ALTER TABLE orders ADD COLUMN {col} {decl}")
         conn.exec_driver_sql(
             "INSERT INTO orders (id, customer_id, order_date, item_name, item_category_id, "
-            "status, total_amount, payment_received, balance, is_backdated, created_at, updated_at) "
+            "status, total_amount, payment_received, balance, is_backdated, is_cancelled, "
+            "created_at, updated_at) "
             f"VALUES (1, {customer_id}, '2026-01-01', 'Old Ring', {category_id}, "
-            "'delivered', 100, 40, 60, 0, '2026-01-01 00:00:00', '2026-01-01 00:00:00')"
+            "'delivered', 100, 40, 60, 0, 0, '2026-01-01 00:00:00', '2026-01-01 00:00:00')"
         )
         conn.exec_driver_sql(
             "INSERT INTO order_items (id, order_id, component_type_id, price, sort_order) "

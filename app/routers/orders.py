@@ -5,14 +5,19 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from fastapi.responses import Response
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.auth.deps import get_current_user, get_db
+from app.auth.deps import get_current_user, get_db, require_admin
 from app.models import Order, OrderImage, OrderItem, User
 from app.models.base import OrderStatus
 from app.schemas.orders import OrderIn, OrderOut, OrderSummary
 from app.services import orders as order_service
 from app.services.backdating import BackdateNotAllowed
+
+
+class CancelIn(BaseModel):
+    cancelled: bool = True
 
 router = APIRouter(prefix="/api/orders", tags=["orders"])
 
@@ -34,6 +39,7 @@ def _summary(order: Order) -> OrderSummary:
         balance=order.balance,
         image_count=order_service.image_count(order),
         source=order.source.name if order.source else None,
+        is_cancelled=order.is_cancelled,
     )
 
 
@@ -92,6 +98,30 @@ def update_order(
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
     except BackdateNotAllowed as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
+
+
+@router.post("/{order_id}/cancel", response_model=OrderOut)
+def cancel_order(
+    order_id: int,
+    payload: CancelIn,
+    db: Session = Depends(get_db),
+    _user: User = Depends(get_current_user),
+):
+    """Soft-void or restore an order (reversible). Excluded from money while cancelled."""
+    try:
+        return order_service.set_cancelled(db, _user, order_id, payload.cancelled)
+    except order_service.OrderNotFound:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "not_found")
+
+
+@router.delete("/{order_id}", dependencies=[Depends(require_admin)])
+def delete_order(order_id: int, db: Session = Depends(get_db)) -> dict:
+    """Permanently delete an order (admin only)."""
+    try:
+        order_service.delete_order(db, order_id)
+    except order_service.OrderNotFound:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "not_found")
+    return {"ok": True}
 
 
 # ===== Pictures (stored in the encrypted DB; multiple per piece/item) =====

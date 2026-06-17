@@ -140,6 +140,7 @@ th.sortable:hover { color: var(--copper); }
 th .sort-arrow { font-size: 10px; opacity: 0.5; margin-left: 4px; }
 tbody tr:hover { background: var(--paper-alt); }
 td.amount { text-align: right; font-variant-numeric: tabular-nums; }
+tbody tr.row-cancelled td { color: var(--ink-soft); font-style: italic; }
 td.amount.positive { color: var(--green); font-weight: 600; }
 td.amount.negative { color: var(--red); font-weight: 600; }
 .table-scroll { overflow-x: auto; }

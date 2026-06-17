@@ -246,6 +246,45 @@ def test_reject_non_image_upload(admin_client):
     assert r.status_code == 400
 
 
+def test_void_excludes_from_sales_and_cash_then_restores(admin_client):
+    created = admin_client.post("/api/orders", json=_order_payload(admin_client, payments=[
+        {"mode": "cash", "amount": "5000"}])).json()
+    oid = created["id"]
+    assert admin_client.get("/api/dashboard").json()["cash_in_hand"] == "5000.00"
+    assert any(r["id"] == oid for r in admin_client.get("/api/reports/sales").json()["rows"])
+
+    # Void → drops out of money (cash + sales total) but stays visible in the list.
+    r = admin_client.post(f"/api/orders/{oid}/cancel", json={"cancelled": True})
+    assert r.status_code == 200 and r.json()["is_cancelled"] is True
+    assert admin_client.get("/api/dashboard").json()["cash_in_hand"] == "0.00"
+    sales = admin_client.get("/api/reports/sales").json()["rows"]
+    row = [r for r in sales if r["id"] == oid][0]
+    assert row["is_cancelled"] is True and row["status"] == "cancelled"
+    # excluded from receivables
+    assert admin_client.get("/api/dashboard").json()["receivables"]["total"] == "0.00"
+
+    # Restore → cash mirror comes back.
+    admin_client.post(f"/api/orders/{oid}/cancel", json={"cancelled": False})
+    assert admin_client.get("/api/dashboard").json()["cash_in_hand"] == "5000.00"
+
+
+def test_delete_order_admin_only_and_removes_cash(admin_client):
+    a = admin_client.post("/api/orders", json=_order_payload(admin_client, payments=[
+        {"mode": "cash", "amount": "5000"}])).json()["id"]
+    b = admin_client.post("/api/orders", json=_order_payload(admin_client, payments=[])).json()["id"]
+
+    # admin delete removes the order and its mirrored cash entry
+    assert admin_client.delete(f"/api/orders/{a}").status_code == 200
+    assert admin_client.get(f"/api/orders/{a}").status_code == 404
+    assert admin_client.get("/api/dashboard").json()["cash_in_hand"] == "0.00"
+
+    # employee cannot delete (logging in as employee ends the admin session)
+    admin_client.post("/api/users", json={"username": "emp", "password": "emp123"})
+    emp = TestClient(app)
+    emp.post("/auth/login", json={"username": "emp", "password": "emp123"})
+    assert emp.delete(f"/api/orders/{b}").status_code == 403
+
+
 def test_order_audited(admin_client):
     admin_client.post("/api/orders", json=_order_payload(admin_client))
     from app.db import engine_state

@@ -140,7 +140,8 @@ def sales_report(
             "payment_received": _money(o.payment_received),
             "payment_modes": payment_modes_label(o),
             "balance": _money(o.balance),
-            "status": o.status.value,
+            "status": "cancelled" if o.is_cancelled else o.status.value,
+            "is_cancelled": o.is_cancelled,
         })
     page, total = _paginate(rows, sort, direction, limit, offset)
     return {"rows": page, "total": total}
@@ -162,7 +163,7 @@ def order_stock_report(
     today: Optional[date] = None,
 ) -> dict:
     today = today or date.today()
-    q = session.query(Order)
+    q = session.query(Order).filter(Order.is_cancelled.is_(False))
     if status:
         q = q.filter(Order.status == status)
     if date_from:
@@ -215,6 +216,7 @@ def debtors_report(
             func.max(Order.order_date).label("last_txn"),
         )
         .join(Order, Order.customer_id == Customer.id)
+        .filter(Order.is_cancelled.is_(False))
         .group_by(Customer.id, Customer.name, Customer.phone)
         .having(func.sum(Order.balance) > 0)
     )
@@ -355,7 +357,7 @@ def customer_report(
             func.coalesce(func.sum(Order.balance), 0).label("balance"),
             func.max(Order.order_date).label("last_visit"),
         )
-        .outerjoin(Order, Order.customer_id == Customer.id)
+        .outerjoin(Order, (Order.customer_id == Customer.id) & (Order.is_cancelled.is_(False)))
         .group_by(Customer.id, Customer.name, Customer.phone)
     )
     if search:

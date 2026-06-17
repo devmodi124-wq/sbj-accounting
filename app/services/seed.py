@@ -127,6 +127,8 @@ def _migrate_pre_create(engine: Engine) -> None:
             # v4 order-level columns (fresh DBs get these from create_all).
             _add_column(conn, "orders", "reference", "TEXT")
             _add_column(conn, "orders", "source_id", "INTEGER")
+            # v6 soft-void flag.
+            _add_column(conn, "orders", "is_cancelled", "BOOLEAN NOT NULL DEFAULT 0")
         if "order_items" in tables and not _is_legacy_orders(conn):
             # v5 per-item weights×rates pricing columns (skip a legacy components
             # table — that is renamed aside below and rebuilt by create_all).

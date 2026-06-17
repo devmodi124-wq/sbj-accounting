@@ -31,14 +31,18 @@ def _money(value) -> str:
 def period_sales(session: Session, start: date, end: date) -> Decimal:
     total = (
         session.query(func.coalesce(func.sum(Order.total_amount), 0))
-        .filter(Order.order_date >= start, Order.order_date <= end)
+        .filter(Order.is_cancelled.is_(False), Order.order_date >= start, Order.order_date <= end)
         .scalar()
     )
     return Decimal(total or 0)
 
 
 def outstanding_receivables(session: Session) -> tuple[Decimal, int]:
-    rows = session.query(Order.customer_id, Order.balance).filter(Order.balance > 0).all()
+    rows = (
+        session.query(Order.customer_id, Order.balance)
+        .filter(Order.is_cancelled.is_(False), Order.balance > 0)
+        .all()
+    )
     total = sum((r.balance for r in rows), ZERO)
     customers = len({r.customer_id for r in rows})
     return total, customers
@@ -73,6 +77,7 @@ def sales_trend(session: Session, today: Optional[date] = None) -> list[dict]:
             func.strftime("%Y-%m", Order.order_date).label("ym"),
             func.coalesce(func.sum(Order.total_amount), 0).label("total"),
         )
+        .filter(Order.is_cancelled.is_(False))
         .group_by("ym")
         .all()
     )
@@ -87,7 +92,7 @@ def sales_trend(session: Session, today: Optional[date] = None) -> list[dict]:
 def pending_orders(session: Session, limit: int = 10) -> list[dict]:
     rows = (
         session.query(Order)
-        .filter(Order.status == OrderStatus.pending)
+        .filter(Order.status == OrderStatus.pending, Order.is_cancelled.is_(False))
         .order_by(Order.order_date.asc())
         .limit(limit)
         .all()
@@ -112,7 +117,7 @@ def top_customers(session: Session, start: date, end: date, limit: int = 5) -> l
             func.coalesce(func.sum(Order.balance), 0).label("balance"),
         )
         .join(Order, Order.customer_id == Customer.id)
-        .filter(Order.order_date >= start, Order.order_date <= end)
+        .filter(Order.is_cancelled.is_(False), Order.order_date >= start, Order.order_date <= end)
         .group_by(Customer.id, Customer.name)
         .order_by(func.sum(Order.total_amount).desc())
         .limit(limit)
@@ -132,7 +137,7 @@ def sales_by_category(session: Session, start: date, end: date) -> list[dict]:
         )
         .join(OrderItem, OrderItem.item_category_id == ItemCategory.id)
         .join(Order, Order.id == OrderItem.order_id)
-        .filter(Order.order_date >= start, Order.order_date <= end)
+        .filter(Order.is_cancelled.is_(False), Order.order_date >= start, Order.order_date <= end)
         .group_by(ItemCategory.name)
         .order_by(func.sum(OrderItem.subtotal).desc())
         .all()

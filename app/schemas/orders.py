@@ -121,6 +121,7 @@ class OrderOut(BaseModel):
     payment_received: Decimal
     balance: Decimal
     is_backdated: bool
+    is_cancelled: bool
     items: list[OrderItemOut]
     payments: list[OrderPaymentOut]
 
@@ -141,3 +142,4 @@ class OrderSummary(BaseModel):
     balance: Decimal
     image_count: int = 0
     source: str | None = None
+    is_cancelled: bool = False

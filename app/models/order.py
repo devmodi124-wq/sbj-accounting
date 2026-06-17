@@ -78,6 +78,9 @@ class Order(TimestampMixin, Base):
         DateTime, default=utcnow, onupdate=utcnow, nullable=False
     )
     is_backdated: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # Soft void: a cancelled order keeps its data + audit trail but is excluded
+    # from all money aggregations (sales, receivables, cash, dashboard, ledgers).
+    is_cancelled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     items: Mapped[list["OrderItem"]] = relationship(
         back_populates="order",

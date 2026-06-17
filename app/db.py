@@ -27,7 +27,8 @@ MASTER_KEY_BYTES = 32
 # v5: per-item weights×rates pricing on order_items (gross/net wt, purity, metal/
 #     diamond/stone/others rates, labour_rate); split payments (order_payments);
 #     cash_entries gain order_id + auto_generated for auto cash-book mirroring.
-SCHEMA_VERSION = 5
+# v6: orders.is_cancelled (soft void).
+SCHEMA_VERSION = 6
 
 
 class Base(DeclarativeBase):

@@ -11,7 +11,38 @@
       search: "", date_from: "", date_to: "", status: "", ageing: "" };
     let root, tbody, pageInfo, footer;
     const filterOptions = {};  // selectFilter param -> [{id,name}]
-    const hasAction = !!(cfg.ledger || cfg.orderDetail);
+    const hasAction = !!(cfg.ledger || cfg.orderDetail || (cfg.actions && cfg.actions.length));
+
+    function isAdmin() { return window.KhataUser && window.KhataUser.role === "admin"; }
+
+    // Built-in row actions (used by cfg.actions). Each returns a button or null.
+    function actionButton(kind, row) {
+      const btn = (label, opts, fn) => el("button",
+        Object.assign({ class: "btn btn-sm", style: "margin-left:6px;", onclick: fn }, opts || {}), label);
+      if (kind === "view") return btn("View", {}, () => window.KhataOrderDetail.open(row.id));
+      if (kind === "edit") return btn("Edit", {}, () => window.KhataApp.editOrder(row.id));
+      if (kind === "void") {
+        return btn(row.is_cancelled ? "Restore" : "Void", {}, async () => {
+          try {
+            await api.post(`/api/orders/${row.id}/cancel`, { cancelled: !row.is_cancelled });
+            window.ui.toast(row.is_cancelled ? "Order restored." : "Order voided.");
+            load();
+          } catch (e) { window.ui.toast(window.ui.errorText(e), "error"); }
+        });
+      }
+      if (kind === "delete-order") {
+        if (!isAdmin()) return null;
+        return btn("Delete", { style: "margin-left:6px;border-color:var(--red);color:var(--red);" }, async () => {
+          if (!confirm(`Permanently delete order #${row.id}? This cannot be undone.`)) return;
+          try {
+            await api.del(`/api/orders/${row.id}`);
+            window.ui.toast("Order deleted.");
+            load();
+          } catch (e) { window.ui.toast(window.ui.errorText(e), "error"); }
+        });
+      }
+      return null;
+    }
 
     function params(extra) {
       const p = new URLSearchParams();
@@ -46,14 +77,17 @@
           }
           return el("td", {}, String(val === null || val === undefined || val === "" ? "—" : val));
         });
-        if (cfg.ledger) {
+        if (cfg.actions && cfg.actions.length) {
+          cells.push(el("td", { style: "white-space:nowrap;" },
+            cfg.actions.map((k) => actionButton(k, row)).filter(Boolean)));
+        } else if (cfg.ledger) {
           cells.push(el("td", {}, el("button", { class: "btn btn-sm",
             onclick: () => window.KhataLedger.open(cfg.ledger, row[cfg.ledgerIdKey]) }, "Ledger")));
         } else if (cfg.orderDetail) {
           cells.push(el("td", {}, el("button", { class: "btn btn-sm",
             onclick: () => window.KhataOrderDetail.open(row.id) }, "View")));
         }
-        tbody.appendChild(el("tr", {}, cells));
+        tbody.appendChild(el("tr", row.is_cancelled ? { class: "row-cancelled" } : {}, cells));
       }
       pageInfo.textContent = `Showing ${data.rows.length ? state.offset + 1 : 0}–${state.offset + data.rows.length} of ${data.total}`;
       if (footer && data.total_outstanding !== undefined) {
@@ -145,13 +179,15 @@
     };
   }
 
-  const statusPill = (s) => (s === "delivered" || s === "paid") ? "pill-green" : "pill-copper";
+  const statusPill = (s) => s === "cancelled" ? "pill-muted"
+    : (s === "delivered" || s === "paid") ? "pill-green" : "pill-copper";
   const ageingPill = (a) => a === "90+" ? "pill-red" : (a === "0-30" ? "pill-green" : (a === "—" ? "pill-muted" : "pill-copper"));
 
   window.KhataViews = window.KhataViews || {};
   window.KhataViews.sales = makeReport({
     endpoint: "/api/reports/sales", title: "Sales Report", subtitle: "One row per order",
-    hasSearch: false, hasDateRange: true, defaultSort: "order_date", orderDetail: true,
+    hasSearch: false, hasDateRange: true, defaultSort: "order_date",
+    actions: ["view", "edit", "void", "delete-order"],
     statusOptions: [{ value: "delivered", label: "Delivered" }, { value: "pending", label: "Pending" }],
     selectFilters: [
       { param: "category_id", endpoint: "/api/item-categories", allLabel: "All categories" },
@@ -169,7 +205,7 @@
   });
   window.KhataViews.stock = makeReport({
     endpoint: "/api/reports/stock", title: "Order / Stock Report", subtitle: "Work in progress",
-    hasDateRange: true, defaultSort: "order_date", orderDetail: true,
+    hasDateRange: true, defaultSort: "order_date", actions: ["view", "edit"],
     statusOptions: [{ value: "pending", label: "Pending" }, { value: "delivered", label: "Delivered" }],
     selectFilters: [{ param: "category_id", endpoint: "/api/item-categories", allLabel: "All categories" }],
     columns: [
