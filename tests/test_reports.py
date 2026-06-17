@@ -97,6 +97,18 @@ def test_creditors_report(admin_client):
     assert c["total_outstanding"] == "4000.00"
 
 
+def test_sales_range_preset(admin_client):
+    cat = admin_client.get("/api/item-categories").json()[0]["id"]
+    last_month = (TODAY.replace(day=1) - timedelta(days=1)).isoformat()
+    # one this-month order, one last-month order (admin may backdate)
+    for d in (TODAY_S, last_month):
+        admin_client.post("/api/orders", json={"customer_name": "R", "order_date": d, "payments": [],
+            "items": [{"item_category_id": cat, "gross_weight": "1", "metal_rate": "100"}]})
+    assert admin_client.get("/api/reports/sales", params={"range": "all_time"}).json()["total"] == 2
+    assert admin_client.get("/api/reports/sales", params={"range": "this_month"}).json()["total"] == 1
+    assert admin_client.get("/api/reports/sales", params={"range": "last_month"}).json()["total"] == 1
+
+
 def test_purchase_report_filters(admin_client):
     admin_client.post("/api/purchases", json={"purchase_date": TODAY_S, "party_name": "Supp One",
         "amount": "5000", "amount_paid": "5000"})   # paid

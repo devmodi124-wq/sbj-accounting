@@ -12,10 +12,19 @@ from app.auth.deps import get_current_user, get_db
 from app.models import User
 from app.models.base import OrderStatus
 from app.services import report_export, reports
+from app.services.dateranges import resolve_range
 
 router = APIRouter(prefix="/api/reports", tags=["reports"])
 
 XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+
+def _range_dates(range_: Optional[str], date_from: Optional[date], date_to: Optional[date]):
+    """Resolve a preset into (date_from, date_to). 'all_time'/'custom'/None keep
+    the explicit dates as given; named presets override them."""
+    if not range_ or range_ in ("all_time", "custom"):
+        return date_from, date_to
+    return resolve_range(range_)
 
 
 def _csv(name: str, rows: list[dict]) -> Response:
@@ -53,6 +62,7 @@ def _is_file(fmt) -> bool:
 
 @router.get("/sales")
 def sales(
+    range: Optional[str] = None,
     date_from: Optional[date] = None,
     date_to: Optional[date] = None,
     customer_id: Optional[int] = None,
@@ -68,6 +78,7 @@ def sales(
     db: Session = Depends(get_db),
     _user: User = Depends(get_current_user),
 ):
+    date_from, date_to = _range_dates(range, date_from, date_to)
     data = reports.sales_report(
         db, date_from=date_from, date_to=date_to, customer_id=customer_id,
         category_id=category_id, weight_type_id=weight_type_id, source_id=source_id,
@@ -82,6 +93,7 @@ def sales(
 @router.get("/stock")
 def stock(
     status: Optional[OrderStatus] = None,
+    range: Optional[str] = None,
     date_from: Optional[date] = None,
     date_to: Optional[date] = None,
     category_id: Optional[int] = None,
@@ -93,6 +105,7 @@ def stock(
     db: Session = Depends(get_db),
     _user: User = Depends(get_current_user),
 ):
+    date_from, date_to = _range_dates(range, date_from, date_to)
     data = reports.order_stock_report(
         db, status=status, date_from=date_from, date_to=date_to, category_id=category_id,
         sort=sort, direction=direction,
@@ -143,6 +156,7 @@ def creditors(
 
 @router.get("/purchases")
 def purchases(
+    range: Optional[str] = None,
     date_from: Optional[date] = None,
     date_to: Optional[date] = None,
     party_id: Optional[int] = None,
@@ -155,6 +169,7 @@ def purchases(
     db: Session = Depends(get_db),
     _user: User = Depends(get_current_user),
 ):
+    date_from, date_to = _range_dates(range, date_from, date_to)
     data = reports.purchase_report(
         db, date_from=date_from, date_to=date_to, party_id=party_id, status=status,
         sort=sort, direction=direction, limit=(100000 if _is_file(format) else limit), offset=offset,
@@ -165,6 +180,9 @@ def purchases(
 @router.get("/customers")
 def customers(
     search: str = "",
+    range: Optional[str] = None,
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
     sort: str = "lifetime",
     direction: str = "desc",
     limit: int = 50,
@@ -173,8 +191,9 @@ def customers(
     db: Session = Depends(get_db),
     _user: User = Depends(get_current_user),
 ):
+    date_from, date_to = _range_dates(range, date_from, date_to)
     data = reports.customer_report(
-        db, search=search, sort=sort, direction=direction,
+        db, search=search, date_from=date_from, date_to=date_to, sort=sort, direction=direction,
         limit=(100000 if _is_file(format) else limit), offset=offset,
     )
     return _export("customers", format, data["rows"]) if _is_file(format) else data

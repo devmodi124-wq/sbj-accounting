@@ -53,7 +53,7 @@
     clear(viewEl);
 
     const rangeSel = el("select", { onchange: (e) => load(viewEl, e.target.value) },
-      [["today", "Today"], ["this_month", "This Month"], ["this_quarter", "This Quarter"], ["this_year", "This Year"]]
+      window.KhataDates.PRESETS.filter(([v]) => v !== "custom")
         .map(([v, t]) => el("option", { value: v, selected: (preset || "this_month") === v }, t)));
 
     const canvas = el("canvas", { height: "220" });

@@ -342,11 +342,21 @@ def customer_report(
     session: Session,
     *,
     search: str = "",
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
     sort: str = "lifetime",
     direction: str = "desc",
     limit: int = 50,
     offset: int = 0,
 ) -> dict:
+    # Date range (optional) scopes the per-customer aggregates to a period; with
+    # no range it's the all-time lifetime view. Conditions go in the join's ON
+    # clause so customers with no orders in the period still appear.
+    join_cond = (Order.customer_id == Customer.id) & (Order.is_cancelled.is_(False))
+    if date_from:
+        join_cond = join_cond & (Order.order_date >= date_from)
+    if date_to:
+        join_cond = join_cond & (Order.order_date <= date_to)
     q = (
         session.query(
             Customer.id,
@@ -357,7 +367,7 @@ def customer_report(
             func.coalesce(func.sum(Order.balance), 0).label("balance"),
             func.max(Order.order_date).label("last_visit"),
         )
-        .outerjoin(Order, (Order.customer_id == Customer.id) & (Order.is_cancelled.is_(False)))
+        .outerjoin(Order, join_cond)
         .group_by(Customer.id, Customer.name, Customer.phone)
     )
     if search:

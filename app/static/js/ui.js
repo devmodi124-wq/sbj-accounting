@@ -59,4 +59,21 @@
   }
 
   window.ui = { el, clear, toast, errorText };
+
+  // Shared time-range presets (kept in sync with app/services/dateranges.py).
+  window.KhataDates = {
+    PRESETS: [
+      ["all_time", "All time"],
+      ["today", "Today"],
+      ["this_month", "This month"],
+      ["last_month", "Last month"],
+      ["this_quarter", "This quarter"],
+      ["last_quarter", "Last quarter"],
+      ["this_year", "This year"],
+      ["last_year", "Last year"],
+      ["last_7_days", "Last 7 days"],
+      ["last_30_days", "Last 30 days"],
+      ["custom", "Custom…"],
+    ],
+  };
 })();

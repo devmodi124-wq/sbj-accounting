@@ -8,7 +8,7 @@
 
   function makeReport(cfg) {
     let state = { sort: cfg.defaultSort, direction: "desc", offset: 0,
-      search: "", date_from: "", date_to: "", status: "", ageing: "" };
+      search: "", range: "all_time", date_from: "", date_to: "", status: "", ageing: "" };
     let root, tbody, pageInfo, footer;
     const filterOptions = {};  // selectFilter param -> [{id,name}]
     const hasAction = !!(cfg.ledger || cfg.orderDetail || (cfg.actions && cfg.actions.length));
@@ -49,8 +49,13 @@
       p.set("limit", PAGE); p.set("offset", state.offset);
       if (state.sort) { p.set("sort", state.sort); p.set("direction", state.direction); }
       if (cfg.hasSearch && state.search) p.set("search", state.search);
-      if (cfg.hasDateRange && state.date_from) p.set("date_from", state.date_from);
-      if (cfg.hasDateRange && state.date_to) p.set("date_to", state.date_to);
+      if (cfg.hasDateRange) {
+        p.set("range", state.range || "all_time");
+        if (state.range === "custom") {
+          if (state.date_from) p.set("date_from", state.date_from);
+          if (state.date_to) p.set("date_to", state.date_to);
+        }
+      }
       if (cfg.statusOptions && state.status) p.set("status", state.status);
       if (cfg.hasAgeing && state.ageing) p.set("ageing", state.ageing);
       (cfg.selectFilters || []).forEach((sf) => { if (state[sf.param]) p.set(sf.param, state[sf.param]); });
@@ -114,10 +119,18 @@
           oninput: (e) => { state.search = e.target.value.trim(); state.offset = 0; load(); } }));
       }
       if (cfg.hasDateRange) {
-        controls.push(el("input", { type: "date", title: "From",
-          onchange: (e) => { state.date_from = e.target.value; state.offset = 0; load(); } }));
-        controls.push(el("input", { type: "date", title: "To",
-          onchange: (e) => { state.date_to = e.target.value; state.offset = 0; load(); } }));
+        const fromI = el("input", { type: "date", title: "From",
+          onchange: (e) => { state.date_from = e.target.value; state.offset = 0; load(); } });
+        const toI = el("input", { type: "date", title: "To",
+          onchange: (e) => { state.date_to = e.target.value; state.offset = 0; load(); } });
+        const customWrap = el("span", { class: "custom-range" + (state.range === "custom" ? "" : " hidden"),
+          style: "display:inline-flex;gap:10px;" }, [fromI, toI]);
+        const sel = el("select", { onchange: (e) => {
+          state.range = e.target.value; state.offset = 0;
+          customWrap.classList.toggle("hidden", state.range !== "custom");
+          load();
+        } }, window.KhataDates.PRESETS.map(([v, t]) => el("option", { value: v, selected: state.range === v }, t)));
+        controls.push(sel, customWrap);
       }
       if (cfg.statusOptions) {
         controls.push(el("select", { onchange: (e) => { state.status = e.target.value; state.offset = 0; load(); } },
@@ -249,8 +262,8 @@
     ],
   });
   window.KhataViews.customers = makeReport({
-    endpoint: "/api/reports/customers", title: "Customer Report", subtitle: "Per-customer lifetime view",
-    hasSearch: true, defaultSort: "lifetime", ledger: "customer", ledgerIdKey: "customer_id",
+    endpoint: "/api/reports/customers", title: "Customer Report", subtitle: "Per-customer view (All time, or pick a period)",
+    hasSearch: true, hasDateRange: true, defaultSort: "lifetime", ledger: "customer", ledgerIdKey: "customer_id",
     columns: [
       { key: "name", label: "Customer", sortable: true }, { key: "phone", label: "Phone" },
       { key: "lifetime", label: "Lifetime", money: true, sortable: true }, { key: "order_count", label: "Orders", sortable: true },
