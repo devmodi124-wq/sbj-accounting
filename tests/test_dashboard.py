@@ -81,6 +81,17 @@ def test_dashboard_pending_and_breakdowns(admin_client):
     assert cat_total  # has category breakdown
 
 
+def test_dashboard_new_metrics(admin_client):
+    _seed(admin_client)
+    d = admin_client.get("/api/dashboard").json()
+    assert d["orders"] == 2
+    assert d["avg_order_value"] == "30000.00"      # 60000 / 2
+    assert d["metal_weight"] == "15.000"            # net 10 + 5 grams
+    assert "sales_prev" in d
+    assert d["sales_by_category"][0]["count"] >= 1
+    assert any(s["count"] == 2 for s in d["sales_by_source"])
+
+
 def test_cash_in_hand_includes_opening_balance(admin_client):
     admin_client.put("/api/settings", json={"opening_cash_balance": "100000"})
     _seed(admin_client)

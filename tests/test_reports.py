@@ -97,6 +97,28 @@ def test_creditors_report(admin_client):
     assert c["total_outstanding"] == "4000.00"
 
 
+def test_sales_totals_and_breakdown(admin_client):
+    cats = admin_client.get("/api/item-categories").json()
+    ring, neck = cats[0]["id"], cats[1]["id"]
+    src = admin_client.get("/api/order-sources").json()[0]["id"]
+    admin_client.post("/api/orders", json={"customer_name": "A", "order_date": TODAY_S, "source_id": src, "payments": [],
+        "items": [{"item_category_id": ring, "gross_weight": "1000", "metal_rate": "1"}]})
+    admin_client.post("/api/orders", json={"customer_name": "B", "order_date": TODAY_S, "payments": [],
+        "items": [{"item_category_id": neck, "gross_weight": "2000", "metal_rate": "1"}]})
+    o3 = admin_client.post("/api/orders", json={"customer_name": "C", "order_date": TODAY_S, "payments": [],
+        "items": [{"item_category_id": ring, "gross_weight": "9999", "metal_rate": "1"}]}).json()["id"]
+    admin_client.post(f"/api/orders/{o3}/cancel", json={"cancelled": True})
+
+    data = admin_client.get("/api/reports/sales").json()
+    assert data["totals"]["count"] == 2                       # cancelled excluded
+    assert data["totals"]["total_amount"] == "3000.00"
+    by_cat = {b["name"]: b for b in data["breakdown"]["by_category"]}
+    assert by_cat[cats[0]["name"]]["count"] == 1 and by_cat[cats[0]["name"]]["amount"] == "1000.00"
+    assert all(b["amount"] != "9999.00" for b in data["breakdown"]["by_category"])
+    by_src = {b["name"]: b for b in data["breakdown"]["by_source"]}
+    assert by_src["—"]["count"] == 1   # order B had no source
+
+
 def test_sales_range_preset(admin_client):
     cat = admin_client.get("/api/item-categories").json()[0]["id"]
     last_month = (TODAY.replace(day=1) - timedelta(days=1)).isoformat()

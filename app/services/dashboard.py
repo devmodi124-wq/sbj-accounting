@@ -1,7 +1,7 @@
 """Dashboard aggregations."""
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from typing import Optional
 
@@ -14,6 +14,7 @@ from app.models import (
     ItemCategory,
     Order,
     OrderItem,
+    OrderSource,
     Purchase,
 )
 from app.models.base import CashEntryType, OrderStatus
@@ -22,6 +23,7 @@ from app.services.orders import item_names_label
 from app.services.settings_store import get_setting
 
 ZERO = Decimal("0")
+_ACTIVE = Order.is_cancelled.is_(False)
 
 
 def _money(value) -> str:
@@ -133,16 +135,51 @@ def sales_by_category(session: Session, start: date, end: date) -> list[dict]:
     rows = (
         session.query(
             ItemCategory.name,
+            func.count(OrderItem.id).label("count"),
             func.coalesce(func.sum(OrderItem.subtotal), 0).label("total"),
         )
         .join(OrderItem, OrderItem.item_category_id == ItemCategory.id)
         .join(Order, Order.id == OrderItem.order_id)
-        .filter(Order.is_cancelled.is_(False), Order.order_date >= start, Order.order_date <= end)
+        .filter(_ACTIVE, Order.order_date >= start, Order.order_date <= end)
         .group_by(ItemCategory.name)
         .order_by(func.sum(OrderItem.subtotal).desc())
         .all()
     )
-    return [{"name": r.name, "total": _money(r.total)} for r in rows]
+    return [{"name": r.name, "count": r.count, "total": _money(r.total)} for r in rows]
+
+
+def sales_by_source(session: Session, start: date, end: date) -> list[dict]:
+    rows = (
+        session.query(
+            func.coalesce(OrderSource.name, "—").label("name"),
+            func.count(Order.id).label("count"),
+            func.coalesce(func.sum(Order.total_amount), 0).label("total"),
+        )
+        .select_from(Order)
+        .outerjoin(OrderSource, Order.source_id == OrderSource.id)
+        .filter(_ACTIVE, Order.order_date >= start, Order.order_date <= end)
+        .group_by(OrderSource.name)
+        .order_by(func.sum(Order.total_amount).desc())
+        .all()
+    )
+    return [{"name": r.name, "count": r.count, "total": _money(r.total)} for r in rows]
+
+
+def period_order_stats(session: Session, start: date, end: date) -> tuple[int, Decimal, Decimal]:
+    """(order count, total sales, net metal grams) for non-cancelled orders in range."""
+    count = (
+        session.query(func.count(Order.id))
+        .filter(_ACTIVE, Order.order_date >= start, Order.order_date <= end)
+        .scalar()
+    ) or 0
+    total = period_sales(session, start, end)
+    metal = (
+        session.query(func.coalesce(func.sum(OrderItem.net_weight), 0))
+        .join(Order, Order.id == OrderItem.order_id)
+        .filter(_ACTIVE, Order.order_date >= start, Order.order_date <= end)
+        .scalar()
+    )
+    return count, total, Decimal(metal or 0)
 
 
 def build_dashboard(
@@ -156,9 +193,23 @@ def build_dashboard(
     start, end = resolve_range(preset, today, custom_from, custom_to)
     recv_total, recv_count = outstanding_receivables(session)
     pay_total, pay_count = outstanding_payables(session)
+
+    order_count, sales, metal = period_order_stats(session, start, end)
+    avg_order = (sales / order_count) if order_count else ZERO
+
+    # Previous comparable period (same length, immediately before) for the delta.
+    span = (end - start).days
+    prev_end = start - timedelta(days=1)
+    prev_start = prev_end - timedelta(days=span)
+    prev_sales = period_sales(session, prev_start, prev_end)
+
     return {
         "range": {"preset": preset, "start": start.isoformat(), "end": end.isoformat()},
-        "sales": _money(period_sales(session, start, end)),
+        "sales": _money(sales),
+        "sales_prev": _money(prev_sales),
+        "orders": order_count,
+        "avg_order_value": _money(avg_order),
+        "metal_weight": f"{metal:.3f}",
         "receivables": {"total": _money(recv_total), "customers": recv_count},
         "payables": {"total": _money(pay_total), "parties": pay_count},
         "cash_in_hand": _money(cash_in_hand(session)),
@@ -166,4 +217,5 @@ def build_dashboard(
         "pending_orders": pending_orders(session),
         "top_customers": top_customers(session, start, end),
         "sales_by_category": sales_by_category(session, start, end),
+        "sales_by_source": sales_by_source(session, start, end),
     }

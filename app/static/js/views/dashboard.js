@@ -15,6 +15,15 @@
       el("div", { class: "stat-sub" }, sub || ""),
     ]);
   }
+  function salesDelta(d) {
+    const cur = Number(d.sales) || 0, prev = Number(d.sales_prev) || 0;
+    if (prev <= 0) return "vs previous period: —";
+    const pct = ((cur - prev) / prev) * 100, up = pct >= 0;
+    return el("span", {}, [
+      el("span", { class: up ? "delta-up" : "delta-down" }, (up ? "▲ " : "▼ ") + Math.abs(pct).toFixed(0) + "%"),
+      " vs previous period",
+    ]);
+  }
   function monthLabel(ym) {
     const [y, m] = ym.split("-");
     return ["", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][+m] + " " + y.slice(2);
@@ -64,10 +73,12 @@
         el("div", { class: "filter-bar", style: "margin-bottom:0;" }, rangeSel),
       ]),
       el("div", { class: "stat-grid" }, [
-        statCard("Sales (period)", money(d.sales), ""),
+        statCard("Sales (period)", money(d.sales), salesDelta(d)),
+        statCard("Orders (period)", String(d.orders), `avg ${money(d.avg_order_value)}`),
+        statCard("Metal sold (period)", (Number(d.metal_weight) || 0).toFixed(3) + " g", "net weight"),
+        statCard("Cash in hand", money(d.cash_in_hand), "as of today", "positive"),
         statCard("Outstanding receivables", money(d.receivables.total), `across ${d.receivables.customers} customers`, "negative"),
         statCard("Outstanding payables", money(d.payables.total), `across ${d.payables.parties} suppliers`),
-        statCard("Cash in hand", money(d.cash_in_hand), "as of today", "positive"),
       ]),
       el("div", { class: "grid-2" }, [
         el("div", { class: "card" }, [
@@ -92,9 +103,19 @@
         ]),
         el("div", { class: "card" }, [
           el("div", { class: "card-header" }, el("h2", {}, "Sales by category")),
-          el("div", { class: "card-body", style: "padding:0;" }, table(["Category", "Total"],
-            d.sales_by_category.map((c) => el("tr", {}, [el("td", {}, c.name), el("td", { class: "amount num" }, money(c.total))])))),
+          el("div", { class: "card-body", style: "padding:0;" }, table(["Category", "Count", "Total"],
+            d.sales_by_category.map((c) => el("tr", {}, [el("td", {}, c.name), el("td", {}, String(c.count)),
+              el("td", { class: "amount num" }, money(c.total))])))),
         ]),
+      ]),
+      el("div", { class: "grid-2", style: "margin-top:18px;" }, [
+        el("div", { class: "card" }, [
+          el("div", { class: "card-header" }, el("h2", {}, "Sales by source")),
+          el("div", { class: "card-body", style: "padding:0;" }, table(["Source", "Count", "Total"],
+            d.sales_by_source.map((c) => el("tr", {}, [el("td", {}, c.name), el("td", {}, String(c.count)),
+              el("td", { class: "amount num" }, money(c.total))])))),
+        ]),
+        el("div", {}),
       ]),
     ]));
     renderChart(canvas, d.sales_trend);

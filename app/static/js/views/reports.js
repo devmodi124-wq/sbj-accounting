@@ -9,7 +9,7 @@
   function makeReport(cfg) {
     let state = { sort: cfg.defaultSort, direction: "desc", offset: 0,
       search: "", range: "all_time", date_from: "", date_to: "", status: "", ageing: "" };
-    let root, tbody, pageInfo, footer;
+    let root, tbody, pageInfo, footer, summaryEl;
     const filterOptions = {};  // selectFilter param -> [{id,name}]
     const hasAction = !!(cfg.ledger || cfg.orderDetail || (cfg.actions && cfg.actions.length));
 
@@ -94,10 +94,43 @@
         }
         tbody.appendChild(el("tr", row.is_cancelled ? { class: "row-cancelled" } : {}, cells));
       }
+      if (data.totals) {
+        const t = data.totals;
+        const tcells = cfg.columns.map((c, i) => {
+          if (i === 0) return el("td", {}, `Totals · ${t.count} orders`);
+          if (c.money && t[c.key] !== undefined) return el("td", { class: "amount num" }, money(t[c.key]));
+          return el("td", {}, "");
+        });
+        if (hasAction) tcells.push(el("td", {}, ""));
+        tbody.appendChild(el("tr", { class: "totals-row" }, tcells));
+      }
+      if (summaryEl) renderSummary(data.breakdown);
       pageInfo.textContent = `Showing ${data.rows.length ? state.offset + 1 : 0}–${state.offset + data.rows.length} of ${data.total}`;
       if (footer && data.total_outstanding !== undefined) {
         footer.textContent = "Total outstanding: ₹ " + Number(data.total_outstanding).toLocaleString("en-IN");
       }
+    }
+
+    function breakdownCard(title, rows) {
+      return el("div", { class: "card", style: "flex:1;min-width:240px;" }, [
+        el("div", { class: "card-header" }, el("h2", {}, title)),
+        el("div", { class: "card-body", style: "padding:0;" }, el("table", {}, [
+          el("thead", {}, el("tr", {}, [el("th", {}, "Name"), el("th", {}, "Count"),
+            el("th", { style: "text-align:right;" }, "Amount")])),
+          el("tbody", {}, rows.length ? rows.map((r) => el("tr", {}, [
+            el("td", {}, r.name), el("td", {}, String(r.count)),
+            el("td", { class: "amount num" }, money(r.amount))])) :
+            [el("tr", {}, el("td", { class: "muted", colspan: "3" }, "No data."))]),
+        ])),
+      ]);
+    }
+    function renderSummary(breakdown) {
+      clear(summaryEl);
+      if (!breakdown) return;
+      summaryEl.appendChild(el("div", { style: "display:flex;gap:18px;flex-wrap:wrap;margin-bottom:18px;" }, [
+        breakdownCard("Sales by category", breakdown.by_category || []),
+        breakdownCard("Sales by source", breakdown.by_source || []),
+      ]));
     }
 
     function setSort(key) {
@@ -177,9 +210,11 @@
           catch (_) { filterOptions[sf.param] = []; }
         }
         tbody = el("tbody");
+        if (cfg.breakdown) summaryEl = el("div", {});
         root = el("div", {}, [
           el("div", { class: "topbar" }, el("div", {}, [
             el("h1", {}, cfg.title), el("div", { class: "meta" }, cfg.subtitle)])),
+          summaryEl || el("span", { class: "hidden" }),
           el("div", { class: "card" }, el("div", { class: "card-body" }, [
             filterBar(),
             el("div", { class: "table-scroll" }, el("table", {}, [header(), tbody])),
@@ -199,7 +234,7 @@
   window.KhataViews = window.KhataViews || {};
   window.KhataViews.sales = makeReport({
     endpoint: "/api/reports/sales", title: "Sales Report", subtitle: "One row per order",
-    hasSearch: false, hasDateRange: true, defaultSort: "order_date",
+    hasSearch: false, hasDateRange: true, defaultSort: "order_date", breakdown: true,
     actions: ["view", "edit", "void", "delete-order"],
     statusOptions: [{ value: "delivered", label: "Delivered" }, { value: "pending", label: "Pending" }],
     selectFilters: [

@@ -121,6 +121,10 @@ def sales_report(
     if status:
         q = q.filter(Order.status == status)
     rows = []
+    # Totals + breakdowns over the filtered, non-cancelled set (the real money).
+    tot = {"count": 0, "total_amount": ZERO, "payment_received": ZERO, "balance": ZERO}
+    by_cat: dict[str, list] = {}
+    by_src: dict[str, list] = {}
     for o in q.all():
         # An order can span several categories/weights; filter on any matching piece.
         if category_id and not any(it.item_category_id == category_id for it in o.items):
@@ -143,8 +147,32 @@ def sales_report(
             "status": "cancelled" if o.is_cancelled else o.status.value,
             "is_cancelled": o.is_cancelled,
         })
+        if o.is_cancelled:
+            continue
+        tot["count"] += 1
+        tot["total_amount"] += Decimal(o.total_amount or 0)
+        tot["payment_received"] += Decimal(o.payment_received or 0)
+        tot["balance"] += Decimal(o.balance or 0)
+        src = o.source.name if o.source else "—"
+        bs = by_src.setdefault(src, [0, ZERO]); bs[0] += 1; bs[1] += Decimal(o.total_amount or 0)
+        for it in o.items:
+            name = it.item_category.name if it.item_category else "—"
+            bc = by_cat.setdefault(name, [0, ZERO]); bc[0] += 1; bc[1] += Decimal(it.subtotal or 0)
+
     page, total = _paginate(rows, sort, direction, limit, offset)
-    return {"rows": page, "total": total}
+    totals = {
+        "count": tot["count"],
+        "total_amount": _money(tot["total_amount"]),
+        "payment_received": _money(tot["payment_received"]),
+        "balance": _money(tot["balance"]),
+    }
+    breakdown = {
+        "by_category": [{"name": n, "count": c, "amount": _money(a)}
+                        for n, (c, a) in sorted(by_cat.items(), key=lambda kv: kv[1][1], reverse=True)],
+        "by_source": [{"name": n, "count": c, "amount": _money(a)}
+                      for n, (c, a) in sorted(by_src.items(), key=lambda kv: kv[1][1], reverse=True)],
+    }
+    return {"rows": page, "total": total, "totals": totals, "breakdown": breakdown}
 
 
 # ===== Order / stock report =====
