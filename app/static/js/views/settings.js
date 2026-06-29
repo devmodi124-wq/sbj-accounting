@@ -228,23 +228,51 @@
     ]);
   }
 
+  // ---- Tab sections: only one group is shown at a time to cut scrolling ----
+  const TABS = [
+    { key: "general", label: "General", render: () => [appSettingsCard()] },
+    {
+      key: "dropdowns", label: "Dropdowns", render: () => [
+        el("div", { class: "settings-grid" }, [
+          lookupCard("/api/item-categories", "Item categories"),
+          lookupCard("/api/purity-types", "Purity types"),
+          lookupCard("/api/weight-types", "Weight types"),
+          lookupCard("/api/supply-sources", "Supplied from"),
+          lookupCard("/api/order-sources", "Order sources"),
+        ]),
+      ],
+    },
+    { key: "users", label: "Users", render: () => [usersCard()] },
+    { key: "storage", label: "Storage & Backups", render: () => [storageCard(), backupCard()] },
+    { key: "danger", label: "Danger Zone", render: () => [dangerCard()] },
+  ];
+
   window.KhataViews = window.KhataViews || {};
   window.KhataViews.settings = {
     mount(viewEl) {
+      let active = TABS[0].key;
+      const content = el("div", {});
+      const nav = el("div", { class: "settings-tabs" });
+
+      function renderTab() {
+        clear(content);
+        const tab = TABS.find((t) => t.key === active) || TABS[0];
+        tab.render().forEach((card) => content.appendChild(card));
+        Array.from(nav.children).forEach((b) =>
+          b.classList.toggle("active", b.dataset.key === active));
+      }
+      TABS.forEach((t) => nav.appendChild(
+        el("button", {
+          class: "settings-tab", "data-key": t.key,
+          onclick: () => { active = t.key; renderTab(); },
+        }, t.label)));
+
       clear(viewEl).appendChild(el("div", {}, [
         el("div", { class: "topbar" }, el("div", {}, [
           el("h1", {}, "Settings"), el("div", { class: "meta" }, "Administration")])),
-        appSettingsCard(),
-        lookupCard("/api/item-categories", "Item categories"),
-        lookupCard("/api/weight-types", "Weight types"),
-        lookupCard("/api/supply-sources", "Supplied from"),
-        lookupCard("/api/order-sources", "Order sources"),
-        lookupCard("/api/purity-types", "Purity types"),
-        usersCard(),
-        storageCard(),
-        backupCard(),
-        dangerCard(),
+        nav, content,
       ]));
+      renderTab();
     },
   };
 })();

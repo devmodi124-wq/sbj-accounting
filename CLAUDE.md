@@ -8,6 +8,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 The `BUILD_SPEC.md` is the canonical source of truth. `prototype.html` is the visual/UX reference — open it in a browser to see the three implemented screens (New Order, Dashboard, Debtors Report).
 
+**`FEATURES.md` is the living feature catalogue.** Whenever you add, change, or remove a
+user-facing feature or capability, update `FEATURES.md` in the same change so it always
+reflects what the app can do. Keep entries terse and grouped by area.
+
 ## Tech stack
 
 - **Backend**: Python, FastAPI, Uvicorn

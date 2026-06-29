@@ -1,0 +1,14 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/scripts/check_features_updated.sh\" 2>/dev/null || true"
+          }
+        ]
+      }
+    ]
+  }
+}
