@@ -19,9 +19,11 @@ from sqlalchemy.orm import Session
 from app.models import (
     CashEntry,
     Customer,
+    DiamondType,
     ItemCategory,
     Order,
     OrderItem,
+    OrderItemDiamond,
     OrderPayment,
     OrderSource,
     PurityType,
@@ -62,17 +64,38 @@ def _d(value) -> Decimal:
     return value if value is not None else ZERO
 
 
-def compute_net_weight(item: OrderItemIn) -> Decimal:
+def diamond_lines(item) -> list[tuple[Decimal, Decimal, Optional[int]]]:
+    """Normalize an item's diamonds into ``(carats, rate, type_id)`` tuples.
+
+    Works for both an :class:`OrderItemIn` and an ORM ``OrderItem``. Prefers the
+    repeatable ``diamonds`` list; falls back to the legacy single-diamond
+    ``diamond_weight``/``diamond_rate`` shorthand (used by import + old payloads)."""
+    rows = getattr(item, "diamonds", None) or []
+    lines: list[tuple[Decimal, Decimal, Optional[int]]] = []
+    for d in rows:
+        carats, rate = _d(getattr(d, "carats", None)), _d(getattr(d, "rate", None))
+        if carats > ZERO or rate > ZERO:
+            lines.append((carats, rate, getattr(d, "diamond_type_id", None)))
+    if lines:
+        return lines
+    legacy = _d(getattr(item, "diamond_weight", None))
+    if legacy > ZERO:
+        return [(legacy, _d(getattr(item, "diamond_rate", None)), None)]
+    return []
+
+
+def compute_net_weight(item) -> Decimal:
     """Net (metal) weight in grams = gross − (diamond+stone+others carats)/5."""
-    stones = _d(item.diamond_weight) + _d(item.stone_weight) + _d(item.others_weight)
+    diamonds = sum((c for c, _r, _t in diamond_lines(item)), ZERO)
+    stones = diamonds + _d(item.stone_weight) + _d(item.others_weight)
     net = _d(item.gross_weight) - stones / FIVE
     return net if net > ZERO else ZERO
 
 
-def compute_subtotal(item: OrderItemIn, net: Decimal) -> Decimal:
-    """Item price = metal + diamond + stone + others + labour values."""
+def compute_subtotal(item, net: Decimal) -> Decimal:
+    """Item price = metal + diamonds + stone + others + labour values."""
     metal = net * _d(item.metal_rate)
-    diamond = _d(item.diamond_weight) * _d(item.diamond_rate)
+    diamond = sum((c * r for c, r, _t in diamond_lines(item)), ZERO)
     stone = _d(item.stone_weight) * _d(item.stone_rate)
     others = _d(item.others_weight) * _d(item.others_rate)
     labour = net * _d(item.labour_rate)
@@ -91,6 +114,9 @@ def _validate_lookups(session: Session, data: OrderIn) -> None:
             raise LookupInvalid("supply_source")
         if item.purity_type_id is not None and session.get(PurityType, item.purity_type_id) is None:
             raise LookupInvalid("purity")
+        for line in item.diamonds:
+            if line.diamond_type_id is not None and session.get(DiamondType, line.diamond_type_id) is None:
+                raise LookupInvalid("diamond_type")
 
 
 def _resolve_customer(session: Session, data: OrderIn, user: User) -> Customer:
@@ -121,11 +147,9 @@ def _apply_item(piece: OrderItem, item: OrderItemIn, index: int) -> None:
     piece.supply_source_id = item.supply_source_id
     piece.purity_type_id = item.purity_type_id
     piece.gross_weight = item.gross_weight
-    piece.diamond_weight = item.diamond_weight
     piece.stone_weight = item.stone_weight
     piece.others_weight = item.others_weight
     piece.metal_rate = item.metal_rate
-    piece.diamond_rate = item.diamond_rate
     piece.stone_rate = item.stone_rate
     piece.others_rate = item.others_rate
     piece.labour_rate = item.labour_rate
@@ -133,6 +157,16 @@ def _apply_item(piece: OrderItem, item: OrderItemIn, index: int) -> None:
     piece.net_weight = net
     piece.subtotal = compute_subtotal(item, net)
     piece.sort_order = index
+
+
+def _apply_diamonds(session: Session, piece: OrderItem, item: OrderItemIn) -> None:
+    """Rebuild a piece's diamond rows from the input (clears old ones first)."""
+    if piece.diamonds:
+        piece.diamonds.clear()
+        session.flush()  # delete old rows before re-adding
+    for di, (carats, rate, type_id) in enumerate(diamond_lines(item)):
+        piece.diamonds.append(OrderItemDiamond(
+            diamond_type_id=type_id, carats=carats, rate=rate, sort_order=di))
 
 
 def _apply_payments(session: Session, order: Order, data: OrderIn) -> None:
@@ -192,6 +226,7 @@ def create_order(session: Session, user: User, data: OrderIn, today: Optional[da
         piece = OrderItem(order_id=order.id)
         _apply_item(piece, item, index)
         order.items.append(piece)
+        _apply_diamonds(session, piece, item)
         total += piece.subtotal
 
     _apply_payments(session, order, data)
@@ -227,6 +262,7 @@ def update_order(
             piece = OrderItem(order_id=order.id)
             order.items.append(piece)
         _apply_item(piece, item, index)
+        _apply_diamonds(session, piece, item)
         total += piece.subtotal
         if piece.id:
             kept_ids.add(piece.id)

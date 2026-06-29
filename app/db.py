@@ -28,7 +28,9 @@ MASTER_KEY_BYTES = 32
 #     diamond/stone/others rates, labour_rate); split payments (order_payments);
 #     cash_entries gain order_id + auto_generated for auto cash-book mirroring.
 # v6: orders.is_cancelled (soft void).
-SCHEMA_VERSION = 6
+# v7: diamond_types lookup + order_item_diamonds (repeatable typed diamond lines
+#     per piece); legacy order_items.diamond_weight/rate backfilled into one row.
+SCHEMA_VERSION = 7
 
 
 class Base(DeclarativeBase):

@@ -62,6 +62,7 @@ app.include_router(lookups_router.item_categories)
 app.include_router(lookups_router.weight_types)
 app.include_router(lookups_router.supply_sources)
 app.include_router(lookups_router.order_sources)
+app.include_router(lookups_router.diamond_types)
 app.include_router(users_router.router)
 app.include_router(settings_router.router)
 

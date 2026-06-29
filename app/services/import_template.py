@@ -45,6 +45,8 @@ INSTRUCTIONS = [
     "  (5 ct = 1 g). Net (metal) weight = gross − (diamond+stone+others)/5. Price =",
     "  net×metal_rate + diamond_ct×diamond_rate + stone_ct×stone_rate + others_ct×others_rate",
     "  + net×labour_rate. Leave rates blank for parts you don't use.",
+    "  diamond_weight/diamond_rate import as one diamond line typed 'Diamond (Other",
+    "  fancy)'; re-type it (or add more diamond lines) in the app after importing.",
     "  status = pending or delivered. payment_mode = cash/upi/bank_transfer/old_gold_exchange/other.",
     "  Each imported order becomes a single item; use the app to add more items to an order.",
     "Pictures (optional): list filenames in the 'images' column, separated by ; (e.g.",

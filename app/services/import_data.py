@@ -18,10 +18,12 @@ from sqlalchemy.orm import Session
 
 from app.models import (
     CashEntry,
+    DiamondType,
     ItemCategory,
     Order,
     OrderImage,
     OrderItem,
+    OrderItemDiamond,
     OrderPayment,
     OrderSource,
     Purchase,
@@ -38,6 +40,7 @@ from app.models.base import (
     PaymentMode,
 )
 from app.services.import_template import SHEETS
+from app.services.seed import LEGACY_DIAMOND_TYPE
 from app.services.ledger import set_opening_balance
 from app.services.matching import (
     find_customer_match,
@@ -245,6 +248,8 @@ def commit(session: Session, user: User, sheets: dict[str, list[dict]],
     weight_by_name = {w.name.strip().lower(): w for w in session.query(WeightType).all()}
     supply_by_name = {s.name.strip().lower(): s for s in session.query(SupplySource).all()}
     source_by_name = {s.name.strip().lower(): s for s in session.query(OrderSource).all()}
+    diamond_by_name = {d.name.strip().lower(): d for d in session.query(DiamondType).all()}
+    legacy_diamond = diamond_by_name.get(LEGACY_DIAMOND_TYPE.strip().lower())
     counts = {"customers": 0, "parties": 0, "orders": 0, "images": 0,
               "cash_entries": 0, "purchases": 0, "opening_balances": 0}
 
@@ -300,16 +305,23 @@ def commit(session: Session, user: User, sheets: dict[str, list[dict]],
                 supply_source_id=supply_by_name[ss].id if ss else None,
                 purity_type_id=purity_by_name[pu].id if pu else None,
                 gross_weight=_parse_decimal(row.get("gross_weight")) or None,
-                diamond_weight=_parse_decimal(row.get("diamond_weight")) or None,
                 stone_weight=_parse_decimal(row.get("stone_weight")) or None,
                 others_weight=_parse_decimal(row.get("others_weight")) or None,
                 metal_rate=_parse_decimal(row.get("metal_rate")) or None,
-                diamond_rate=_parse_decimal(row.get("diamond_rate")) or None,
                 stone_rate=_parse_decimal(row.get("stone_rate")) or None,
                 others_rate=_parse_decimal(row.get("others_rate")) or None,
                 labour_rate=_parse_decimal(row.get("labour_rate")) or None,
                 sort_order=0,
             )
+            # The single diamond_weight/diamond_rate import columns become one
+            # diamond line of the legacy "Other fancy" type (re-typeable in the app).
+            dia_ct = _parse_decimal(row.get("diamond_weight")) or Decimal("0")
+            if dia_ct > 0:
+                piece.diamonds.append(OrderItemDiamond(
+                    diamond_type_id=legacy_diamond.id if legacy_diamond else None,
+                    carats=dia_ct, rate=_parse_decimal(row.get("diamond_rate")) or None,
+                    sort_order=0,
+                ))
             net = compute_net_weight(piece)
             piece.net_weight = net
             piece.subtotal = compute_subtotal(piece, net)

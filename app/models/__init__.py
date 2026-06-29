@@ -17,6 +17,7 @@ from app.models.ledger import OpeningBalance
 from app.models.masters import (
     ComponentType,
     Customer,
+    DiamondType,
     ItemCategory,
     OrderSource,
     Party,
@@ -24,7 +25,13 @@ from app.models.masters import (
     SupplySource,
     WeightType,
 )
-from app.models.order import Order, OrderImage, OrderItem, OrderPayment
+from app.models.order import (
+    Order,
+    OrderImage,
+    OrderItem,
+    OrderItemDiamond,
+    OrderPayment,
+)
 from app.models.purchase import Purchase
 from app.models.system import AuditLog, Setting
 from app.models.user import User
@@ -43,6 +50,7 @@ __all__ = [
     "OpeningBalance",
     "ComponentType",
     "Customer",
+    "DiamondType",
     "ItemCategory",
     "OrderSource",
     "Party",
@@ -52,6 +60,7 @@ __all__ = [
     "Order",
     "OrderImage",
     "OrderItem",
+    "OrderItemDiamond",
     "OrderPayment",
     "Purchase",
     "AuditLog",

@@ -295,3 +295,70 @@ def test_order_audited(admin_client):
     assert "orders" in tables
     assert "order_items" in tables        # pieces
     assert "order_payments" in tables      # split-payment lines
+
+
+# ===== Diamonds: repeatable typed lines =====
+
+def test_diamond_types_seeded(admin_client):
+    names = [d["name"] for d in admin_client.get("/api/diamond-types").json()]
+    assert "Diamond (Chowki)" in names
+    assert "Lab grown diamond" in names
+    assert len([n for n in names if n.lower().startswith("diamond") or "diamond" in n.lower()]) >= 5
+
+
+def test_order_multiple_diamond_rows(admin_client):
+    cat = _category_id(admin_client)
+    dts = admin_client.get("/api/diamond-types").json()
+    chowki, princess = dts[0]["id"], dts[1]["id"]
+    # gross 10g; 1ct@50000 + 2ct@60000; metal 5000/g
+    # net = 10 - 3/5 = 9.4g; diamonds = 50000 + 120000 = 170000
+    # subtotal = 9.4*5000 + 170000 = 217000
+    body = admin_client.post("/api/orders", json=_order_payload(admin_client, payments=[], items=[{
+        "item_category_id": cat, "gross_weight": "10", "metal_rate": "5000",
+        "diamonds": [
+            {"diamond_type_id": chowki, "carats": "1", "rate": "50000"},
+            {"diamond_type_id": princess, "carats": "2", "rate": "60000"},
+        ],
+    }])).json()
+    item = body["items"][0]
+    assert item["net_weight"] == "9.400"
+    assert item["subtotal"] == "217000.00"
+    assert len(item["diamonds"]) == 2
+    assert item["diamonds"][0]["diamond_type_id"] == chowki
+
+
+def test_legacy_scalar_diamond_becomes_a_row(admin_client):
+    # The single diamond_weight/diamond_rate shorthand is stored as one diamond row.
+    body = admin_client.post("/api/orders", json=_order_payload(admin_client)).json()
+    item = body["items"][0]
+    assert len(item["diamonds"]) == 1
+    assert item["diamonds"][0]["carats"] == "2.500"
+
+
+def test_edit_order_replaces_diamond_rows(admin_client):
+    cat = _category_id(admin_client)
+    dts = admin_client.get("/api/diamond-types").json()
+    o = admin_client.post("/api/orders", json=_order_payload(admin_client, payments=[], items=[{
+        "item_category_id": cat, "gross_weight": "5", "metal_rate": "1000",
+        "diamonds": [{"diamond_type_id": dts[0]["id"], "carats": "1", "rate": "1000"}],
+    }])).json()
+    item_id = o["items"][0]["id"]
+    upd = admin_client.put(f"/api/orders/{o['id']}", json={
+        "customer_id": o["customer_id"], "order_date": o["order_date"], "payments": [],
+        "items": [{"id": item_id, "item_category_id": cat, "gross_weight": "5", "metal_rate": "1000",
+                   "diamonds": [
+                       {"diamond_type_id": dts[1]["id"], "carats": "2", "rate": "2000"},
+                       {"diamond_type_id": dts[2]["id"], "carats": "1", "rate": "1000"},
+                   ]}],
+    }).json()
+    assert len(upd["items"][0]["diamonds"]) == 2
+    assert upd["items"][0]["diamonds"][0]["diamond_type_id"] == dts[1]["id"]
+
+
+def test_invalid_diamond_type_rejected(admin_client):
+    cat = _category_id(admin_client)
+    r = admin_client.post("/api/orders", json=_order_payload(admin_client, payments=[], items=[{
+        "item_category_id": cat, "gross_weight": "5", "metal_rate": "1000",
+        "diamonds": [{"diamond_type_id": 99999, "carats": "1", "rate": "1000"}],
+    }]))
+    assert r.status_code == 422

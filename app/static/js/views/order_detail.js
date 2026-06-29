@@ -26,15 +26,20 @@
     return back;
   }
 
-  function pieceBlock(orderId, piece, cats, wts, sss, purs) {
+  function pieceBlock(orderId, piece, cats, wts, sss, purs, dts) {
     const net = num(piece.net_weight);
+    const diaLines = piece.diamonds || [];
+    const diaValue = diaLines.reduce((a, d) => a + num(d.carats) * num(d.rate), 0);
     const vals = [
       ["Metal", net * num(piece.metal_rate)],
-      ["Diamond", num(piece.diamond_weight) * num(piece.diamond_rate)],
+      ["Diamonds", diaValue],
       ["Stone", num(piece.stone_weight) * num(piece.stone_rate)],
       ["Others", num(piece.others_weight) * num(piece.others_rate)],
       ["Labour", net * num(piece.labour_rate)],
     ].filter(([, v]) => v);
+    const diaRows = diaLines.map((d) => infoRow(
+      d.diamond_type_id ? nameOf(dts, d.diamond_type_id) : "Diamond",
+      `${ct(d.carats)} · ${money(num(d.rate))}/ct`));
 
     const gallery = el("div", { style: "display:flex;gap:10px;flex-wrap:wrap;margin-top:8px;" });
     const fileInput = el("input", { type: "file", accept: "image/*", multiple: true, onchange: addImages });
@@ -78,8 +83,9 @@
           infoRow("Weight type", piece.weight_type_id ? nameOf(wts, piece.weight_type_id) : "—"),
           infoRow("Supplied from", piece.supply_source_id ? nameOf(sss, piece.supply_source_id) : "—"),
           infoRow("Gross / Net wt", `${wt(piece.gross_weight)}  /  ${wt(piece.net_weight)}`),
-          infoRow("Diamond / Stone / Others", `${ct(piece.diamond_weight)} · ${ct(piece.stone_weight)} · ${ct(piece.others_weight)}`),
-        ])),
+        ].concat(diaRows).concat([
+          infoRow("Stone / Others", `${ct(piece.stone_weight)} · ${ct(piece.others_weight)}`),
+        ]))),
         el("div", { class: "form-section-title" }, "Value breakdown"),
         el("table", {}, el("tbody", {}, vals.length
           ? vals.map(([label, v]) => valRow(label, money(v))).concat([
@@ -96,10 +102,11 @@
   }
 
   async function open(orderId) {
-    const [o, cats, wts, sss, srcs, purs] = await Promise.all([
+    const [o, cats, wts, sss, srcs, purs, dts] = await Promise.all([
       api.get(`/api/orders/${orderId}`),
       api.get("/api/item-categories"), api.get("/api/weight-types"),
       api.get("/api/supply-sources"), api.get("/api/order-sources"), api.get("/api/purity-types"),
+      api.get("/api/diamond-types"),
     ]);
     const cust = await api.get(`/api/customers/${o.customer_id}`).catch(() => ({ name: "" }));
 
@@ -114,7 +121,7 @@
       : "—";
 
     const itemsWrap = el("div", {}, [el("div", { class: "form-section-title" }, `Items (${o.items.length})`)]);
-    o.items.forEach((piece) => itemsWrap.appendChild(pieceBlock(o.id, piece, cats, wts, sss, purs)));
+    o.items.forEach((piece) => itemsWrap.appendChild(pieceBlock(o.id, piece, cats, wts, sss, purs, dts)));
 
     back = overlay([
       el("div", { class: "card-header" }, [

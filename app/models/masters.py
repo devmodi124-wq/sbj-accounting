@@ -87,3 +87,9 @@ class OrderSource(_Lookup, Base):
     """Where an order came in from (Whatsapp, Instagram, Facebook, …). Admin-managed."""
 
     __tablename__ = "order_sources"
+
+
+class DiamondType(_Lookup, Base):
+    """Diamond cut/kind (Chowki, Princess, Marquise, fancy, lab-grown). Admin-managed."""
+
+    __tablename__ = "diamond_types"

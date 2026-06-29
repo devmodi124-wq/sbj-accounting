@@ -24,6 +24,24 @@ class OrderImageMeta(BaseModel):
     sort_order: int
 
 
+class DiamondLineIn(BaseModel):
+    # id present when editing; the service rebuilds diamond rows on every save.
+    id: int | None = None
+    diamond_type_id: int | None = None   # configurable diamond type (Chowki/Princess/…)
+    carats: Decimal | None = None        # carats (5 ct = 1 g)
+    rate: Decimal | None = None          # ₹ per carat
+
+
+class DiamondLineOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    diamond_type_id: int | None
+    carats: Decimal | None
+    rate: Decimal | None
+    sort_order: int
+
+
 class OrderItemIn(BaseModel):
     # Present when editing an existing piece — lets the service preserve its
     # pictures across an update instead of recreating (and wiping) it.
@@ -33,14 +51,17 @@ class OrderItemIn(BaseModel):
     weight_type_id: int | None = None
     supply_source_id: int | None = None
     purity_type_id: int | None = None
-    # Weights — gross in grams; diamond/stone/others in carats.
+    # Weights — gross in grams; stone/others in carats.
     gross_weight: Decimal | None = None
-    diamond_weight: Decimal | None = None
     stone_weight: Decimal | None = None
     others_weight: Decimal | None = None
-    # Rates — metal/labour per gram of net weight; diamond/stone/others per carat.
+    # Repeatable diamond lines (preferred). For backward-compat / import, a single
+    # untyped diamond can also be given via diamond_weight + diamond_rate below.
+    diamonds: list[DiamondLineIn] = Field(default_factory=list)
+    diamond_weight: Decimal | None = None   # legacy single-diamond shorthand
+    diamond_rate: Decimal | None = None     # legacy single-diamond shorthand
+    # Rates — metal/labour per gram of net weight; stone/others per carat.
     metal_rate: Decimal | None = None
-    diamond_rate: Decimal | None = None
     stone_rate: Decimal | None = None
     others_rate: Decimal | None = None
     labour_rate: Decimal | None = None
@@ -56,15 +77,14 @@ class OrderItemOut(BaseModel):
     supply_source_id: int | None
     purity_type_id: int | None
     gross_weight: Decimal | None
-    diamond_weight: Decimal | None
     stone_weight: Decimal | None
     others_weight: Decimal | None
     net_weight: Decimal | None
     metal_rate: Decimal | None
-    diamond_rate: Decimal | None
     stone_rate: Decimal | None
     others_rate: Decimal | None
     labour_rate: Decimal | None
+    diamonds: list[DiamondLineOut] = []
     subtotal: Decimal
     sort_order: int
     images: list[OrderImageMeta] = []

@@ -235,6 +235,7 @@
       key: "dropdowns", label: "Dropdowns", render: () => [
         el("div", { class: "settings-grid" }, [
           lookupCard("/api/item-categories", "Item categories"),
+          lookupCard("/api/diamond-types", "Diamond types"),
           lookupCard("/api/purity-types", "Purity types"),
           lookupCard("/api/weight-types", "Weight types"),
           lookupCard("/api/supply-sources", "Supplied from"),

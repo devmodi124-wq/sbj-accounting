@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from app.db import SCHEMA_VERSION, Base
 from app.models import (
     ComponentType,
+    DiamondType,
     ItemCategory,
     OrderSource,
     PurityType,
@@ -40,6 +41,15 @@ DEFAULT_ITEM_CATEGORIES = [
 DEFAULT_WEIGHT_TYPES = ["Lightweight", "Normal", "Heavyweight"]
 DEFAULT_SUPPLY_SOURCES = ["On Order", "Stock"]
 DEFAULT_ORDER_SOURCES = ["Whatsapp", "Instagram", "Facebook", "Walk-in", "Other"]
+DEFAULT_DIAMOND_TYPES = [
+    "Diamond (Chowki)",
+    "Diamond (Princess)",
+    "Diamond (Marquise)",
+    "Diamond (Other fancy)",
+    "Lab grown diamond",
+]
+# Legacy single-diamond rows migrate into this bucket (unknown cut).
+LEGACY_DIAMOND_TYPE = "Diamond (Other fancy)"
 
 # key -> default value. Only inserted when missing; never overwrites existing.
 DEFAULT_SETTINGS = {
@@ -80,6 +90,7 @@ def seed_defaults(session: Session) -> None:
         _seed_lookup(session, WeightType, DEFAULT_WEIGHT_TYPES)
         _seed_lookup(session, SupplySource, DEFAULT_SUPPLY_SOURCES)
         _seed_lookup(session, OrderSource, DEFAULT_ORDER_SOURCES)
+        _seed_lookup(session, DiamondType, DEFAULT_DIAMOND_TYPES)
         _seed_settings(session)
         session.commit()
 
@@ -202,6 +213,33 @@ def _migrate_payments_backfill(engine: Engine) -> None:
         )
 
 
+def _migrate_diamond_rows(engine: Engine) -> None:
+    """v7: backfill the legacy single-diamond columns into ``order_item_diamonds``.
+
+    Runs after the diamond types are seeded so the legacy bucket type exists. Each
+    pre-v7 piece with a positive ``diamond_weight`` gets one diamond row; the guard
+    against existing rows keeps it idempotent (and a no-op for fresh DBs)."""
+    with engine.begin() as conn:
+        tables = _tables(conn)
+        if "order_item_diamonds" not in tables or "order_items" not in tables:
+            return
+        if "diamond_weight" not in _columns(conn, "order_items"):
+            return
+        row = conn.exec_driver_sql(
+            "SELECT id FROM diamond_types WHERE lower(name) = lower(?) LIMIT 1",
+            (LEGACY_DIAMOND_TYPE,),
+        ).fetchone()
+        type_id = row[0] if row else None
+        conn.exec_driver_sql(
+            "INSERT INTO order_item_diamonds "
+            "(order_item_id, diamond_type_id, carats, rate, sort_order) "
+            "SELECT id, ?, diamond_weight, diamond_rate, 0 FROM order_items "
+            "WHERE diamond_weight IS NOT NULL AND diamond_weight > 0 "
+            "AND id NOT IN (SELECT order_item_id FROM order_item_diamonds)",
+            (type_id,),
+        )
+
+
 def initialize_database(engine: Engine) -> None:
     """Create tables, migrate, seed defaults, and stamp the schema version.
 
@@ -214,3 +252,4 @@ def initialize_database(engine: Engine) -> None:
         with acting_as(None):
             set_setting(session, "schema_version", str(SCHEMA_VERSION))
             session.commit()
+    _migrate_diamond_rows(engine)  # after seeding so the legacy bucket type exists

@@ -138,10 +138,36 @@ class OrderItem(Base):
         cascade="all, delete-orphan",
         order_by="OrderImage.sort_order",
     )
+    diamonds: Mapped[list["OrderItemDiamond"]] = relationship(
+        back_populates="item",
+        cascade="all, delete-orphan",
+        order_by="OrderItemDiamond.sort_order",
+    )
     item_category: Mapped["ItemCategory"] = relationship(lazy="joined")
     weight_type: Mapped["WeightType"] = relationship(lazy="joined")
     supply_source: Mapped["SupplySource"] = relationship(lazy="joined")
     purity_type: Mapped["PurityType"] = relationship(lazy="joined")
+
+
+class OrderItemDiamond(Base):
+    """One diamond line on a piece: a typed quantity (carats) at a per-carat rate.
+
+    A piece can carry several (e.g. some Chowki and some Princess). The diamond
+    carats count toward the stone deduction in net-weight, and each line's
+    carats×rate adds to the item subtotal (see :mod:`app.services.orders`)."""
+
+    __tablename__ = "order_item_diamonds"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    order_item_id: Mapped[int] = mapped_column(
+        ForeignKey("order_items.id", ondelete="CASCADE"), nullable=False
+    )
+    diamond_type_id: Mapped[int | None] = mapped_column(ForeignKey("diamond_types.id"))
+    carats: Mapped[Decimal | None] = mapped_column(Weight)   # carats (5 ct = 1 g)
+    rate: Mapped[Decimal | None] = mapped_column(Rate)       # ₹ per carat
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
+    item: Mapped["OrderItem"] = relationship(back_populates="diamonds")
 
 
 class OrderPayment(Base):

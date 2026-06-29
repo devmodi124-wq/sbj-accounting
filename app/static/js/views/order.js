@@ -8,7 +8,7 @@
 
   const MODES = ["cash", "upi", "bank_transfer", "old_gold_exchange", "other"];
 
-  let purities = [], categories = [], weights = [], supplies = [], sources = [];
+  let purities = [], categories = [], weights = [], supplies = [], sources = [], diamondTypes = [];
   let selectedCustomerId = null;
   let editingOrderId = null;   // null = create mode
   let pieces = [];             // piece-card controllers
@@ -56,7 +56,6 @@
     // weight/rate inputs
     const inp = (ph) => el("input", { type: "text", class: "amount-input", placeholder: ph || "", oninput: recomputeAll });
     const gross = inp("g"), metalRate = inp("₹/g");
-    const diaWt = inp("ct"), diaRate = inp("₹/ct");
     const stoneWt = inp("ct"), stoneRate = inp("₹/ct");
     const othersWt = inp("ct"), othersRate = inp("₹/ct");
     const labourRate = inp("₹/g");
@@ -64,16 +63,40 @@
     const breakdownEl = el("div", { class: "muted", style: "font-size:12px;margin-top:4px;" }, "");
     const subtotalEl = el("span", { class: "num", style: "font-weight:600;" }, "₹ 0");
 
+    // ---- Diamonds: repeatable {type, carats, rate} rows ----
+    const diamondsWrap = el("div", { style: "margin-top:6px;" });
+    let diamondRows = [];
+    function makeDiamondRow(d) {
+      const typeSel = el("select", {}, options(diamondTypes, "Diamond type…"));
+      const carats = el("input", { type: "text", class: "amount-input", placeholder: "ct", oninput: recomputeAll });
+      const rate = el("input", { type: "text", class: "amount-input", placeholder: "₹/ct", oninput: recomputeAll });
+      if (d) {
+        if (d.diamond_type_id) typeSel.value = String(d.diamond_type_id);
+        carats.value = d.carats ?? ""; rate.value = d.rate ?? "";
+      }
+      const row = { typeSel, carats, rate };
+      row.el = el("div", { class: "inline-row" }, [typeSel, carats, rate,
+        el("button", { class: "remove-row-btn", title: "Remove", onclick: () => removeDiamond(row) }, "×")]);
+      return row;
+    }
+    function addDiamond(d) {
+      const row = makeDiamondRow(d || null);
+      diamondRows.push(row); diamondsWrap.appendChild(row.el); recomputeAll();
+    }
+    function removeDiamond(row) {
+      diamondRows = diamondRows.filter((r) => r !== row); row.el.remove(); recomputeAll();
+    }
+
     if (data) {
       catSel.value = data.item_category_id ? String(data.item_category_id) : "";
       wtSel.value = data.weight_type_id ? String(data.weight_type_id) : "";
       ssSel.value = data.supply_source_id ? String(data.supply_source_id) : "";
       puSel.value = data.purity_type_id ? String(data.purity_type_id) : "";
       gross.value = data.gross_weight ?? ""; metalRate.value = data.metal_rate ?? "";
-      diaWt.value = data.diamond_weight ?? ""; diaRate.value = data.diamond_rate ?? "";
       stoneWt.value = data.stone_weight ?? ""; stoneRate.value = data.stone_rate ?? "";
       othersWt.value = data.others_weight ?? ""; othersRate.value = data.others_rate ?? "";
       labourRate.value = data.labour_rate ?? "";
+      (data.diamonds || []).forEach((d) => addDiamond(d));
     }
 
     // pictures
@@ -115,11 +138,12 @@
     }
 
     ctrl.recompute = function () {
-      const g = num(gross.value), d = num(diaWt.value), s = num(stoneWt.value), o = num(othersWt.value);
-      let net = g - (d + s + o) / 5;
+      const g = num(gross.value), s = num(stoneWt.value), o = num(othersWt.value);
+      let diaCt = 0, diaV = 0;
+      diamondRows.forEach((r) => { const c = num(r.carats.value); diaCt += c; diaV += c * num(r.rate.value); });
+      let net = g - (diaCt + s + o) / 5;
       if (net < 0) net = 0;
       const metalV = net * num(metalRate.value);
-      const diaV = d * num(diaRate.value);
       const stoneV = s * num(stoneRate.value);
       const othersV = o * num(othersRate.value);
       const labourV = net * num(labourRate.value);
@@ -144,14 +168,21 @@
         supply_source_id: ssSel.value ? Number(ssSel.value) : null,
         purity_type_id: puSel.value ? Number(puSel.value) : null,
         gross_weight: strOrNull(gross.value),
-        diamond_weight: strOrNull(diaWt.value),
         stone_weight: strOrNull(stoneWt.value),
         others_weight: strOrNull(othersWt.value),
         metal_rate: strOrNull(metalRate.value),
-        diamond_rate: strOrNull(diaRate.value),
         stone_rate: strOrNull(stoneRate.value),
         others_rate: strOrNull(othersRate.value),
         labour_rate: strOrNull(labourRate.value),
+        diamonds: diamondRows.map((r) => {
+          const c = num(r.carats.value), rt = num(r.rate.value);
+          if (c <= 0 && rt <= 0) return null;
+          return {
+            diamond_type_id: r.typeSel.value ? Number(r.typeSel.value) : null,
+            carats: strOrNull(r.carats.value),
+            rate: strOrNull(r.rate.value),
+          };
+        }).filter(Boolean),
       };
     };
     ctrl.hasCategory = function () { return !!catSel.value; };
@@ -178,12 +209,16 @@
         el("div", { class: "form-section-title" }, "Weights & rates"),
         el("div", { class: "form-grid cols-2" }, [
           field("Gross weight (g)", gross), field("Metal rate (₹/g)", metalRate),
-          field("Diamond (ct)", diaWt), field("Diamond rate (₹/ct)", diaRate),
           field("Stone (ct)", stoneWt), field("Stone rate (₹/ct)", stoneRate),
           field("Others (ct)", othersWt), field("Others rate (₹/ct)", othersRate),
           field("Labour rate (₹/g)", labourRate),
           field("Net (metal) weight", netEl),
         ]),
+        el("div", { class: "form-section-title" }, "Diamonds"),
+        el("div", { class: "muted", style: "font-size:12px;margin-bottom:4px;" },
+          "Add a line per diamond type (carats × ₹/ct). Carats count toward the stone deduction in net weight."),
+        diamondsWrap,
+        el("button", { class: "add-row-btn", type: "button", onclick: () => addDiamond() }, "+ Add diamond"),
         breakdownEl,
         el("div", { style: "text-align:right;margin-top:6px;" }, ["Item subtotal: ", subtotalEl]),
         el("div", { class: "form-section-title" }, "Pictures"),
@@ -345,12 +380,13 @@
   }
 
   async function mount(viewEl) {
-    [purities, categories, weights, supplies, sources] = await Promise.all([
+    [purities, categories, weights, supplies, sources, diamondTypes] = await Promise.all([
       api.get("/api/purity-types?active_only=true"),
       api.get("/api/item-categories?active_only=true"),
       api.get("/api/weight-types?active_only=true"),
       api.get("/api/supply-sources?active_only=true"),
       api.get("/api/order-sources?active_only=true"),
+      api.get("/api/diamond-types?active_only=true"),
     ]);
     f.date = el("input", { type: "date", value: new Date().toISOString().slice(0, 10) });
     f.code = el("input", { type: "text", placeholder: "optional" });

@@ -24,6 +24,7 @@ Single concurrent user, two roles (**Admin** / **Employee**), encrypted-at-rest 
 
 - **Multi-item orders** — one order holds one or more pieces; each piece priced from weights × rates.
 - **Weights×rates pricing** — gross weight (g) + diamond/stone/others (carats) + per-unit rates; net metal weight = gross − (diamond+stone+others)/5; subtotal computed per piece, order total = Σ pieces.
+- **Typed diamonds** — a piece can carry multiple diamond lines, each `{type, carats, rate}`; the diamond type is an admin-configurable dropdown (seeded Chowki / Princess / Marquise / Other fancy / Lab-grown). All diamond carats count toward the net-weight deduction; each line's carats×rate adds to the subtotal.
 - **Per-piece category** (required), plus optional item name, weight type, supply source, purity.
 - **Order reference** (free text) and **source** (Whatsapp/Instagram/… configurable).
 - **Split payments** — multiple `{mode, amount}` lines per order; cash-mode lines mirror into the cash book automatically.
