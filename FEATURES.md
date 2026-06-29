@@ -62,7 +62,7 @@ Single concurrent user, two roles (**Admin** / **Employee**), encrypted-at-rest 
 - **Purchases report** — filters by status / party.
 - **Customer report** — order count, lifetime value, average order value.
 - **Date-range presets** (shared everywhere) — all time, today, this/last month, this/last quarter, this/last year, last 7/30 days, custom.
-- **CSV + Excel export** (Excel includes thumbnails).
+- **CSV + Excel export** (Excel includes thumbnails) — each export ends with a **TOTAL row** summing the money/count columns; the Sales export also appends the category & source breakdown.
 
 ## Ledgers
 

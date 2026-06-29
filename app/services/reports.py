@@ -82,13 +82,25 @@ def _sort_key(value):
         return str(value).lower()
 
 
-def to_csv(rows: list[dict], columns: list[tuple[str, str]]) -> str:
-    """Serialize ``rows`` to CSV using (key, header) ``columns``."""
+def to_csv(rows: list[dict], columns: list[tuple[str, str]],
+           total_row: dict | None = None, sections: list | None = None) -> str:
+    """Serialize ``rows`` to CSV using (key, header) ``columns``.
+
+    Appends a TOTAL row when ``total_row`` is given, and any extra ``sections``
+    (each ``(title, headers, rows)``) below — used for the sales breakdown."""
     buf = io.StringIO()
     writer = csv.writer(buf)
     writer.writerow([header for _, header in columns])
     for row in rows:
         writer.writerow([row.get(key, "") for key, _ in columns])
+    if total_row:
+        writer.writerow([total_row.get(key, "") for key, _ in columns])
+    for title, headers, srows in (sections or []):
+        writer.writerow([])
+        writer.writerow([title])
+        writer.writerow(headers)
+        for sr in srows:
+            writer.writerow(sr)
     return buf.getvalue()
 
 
@@ -441,3 +453,50 @@ CSV_COLUMNS = {
                   ("order_count", "Orders"), ("avg_order_value", "Avg order"),
                   ("balance", "Balance"), ("last_visit", "Last visit")],
 }
+
+# Which row keys to total per report (summed into a trailing TOTAL row on export).
+_TOTAL_COLUMNS = {
+    "sales": {"int": ["item_count"], "money": ["total_amount", "payment_received", "balance"]},
+    "stock": {"int": ["item_count"], "money": []},
+    "debtors": {"int": [], "money": ["billed", "received", "balance"]},
+    "creditors": {"int": [], "money": ["purchased", "paid", "balance"]},
+    "purchases": {"int": [], "money": ["amount", "amount_paid", "balance"]},
+    "customers": {"int": ["order_count"], "money": ["lifetime", "balance"]},
+}
+
+
+def _to_decimal(value) -> Decimal:
+    try:
+        return Decimal(str(value if value not in (None, "") else 0).replace(",", ""))
+    except Exception:
+        return ZERO
+
+
+def totals_row(name: str, rows: list[dict]) -> dict | None:
+    """Build a TOTAL row for ``name`` by summing its numeric columns over ``rows``.
+
+    Cancelled sales rows carry a balance/total of 0 in the report, so they don't
+    distort the totals here."""
+    cfg = _TOTAL_COLUMNS.get(name)
+    if cfg is None or not rows:
+        return None
+    first_key = CSV_COLUMNS[name][0][0]
+    row: dict = {first_key: "TOTAL"}
+    for key in cfg["int"]:
+        row[key] = sum(int(_to_decimal(r.get(key))) for r in rows)
+    for key in cfg["money"]:
+        row[key] = _money(sum((_to_decimal(r.get(key)) for r in rows), ZERO))
+    return row
+
+
+def breakdown_sections(data: dict) -> list:
+    """Extra export sections (title, headers, rows) for the sales breakdown."""
+    bd = data.get("breakdown") or {}
+    sections = []
+    if bd.get("by_category"):
+        sections.append(("Sales by category", ["Category", "Count", "Amount"],
+                         [[c["name"], c["count"], c["amount"]] for c in bd["by_category"]]))
+    if bd.get("by_source"):
+        sections.append(("Sales by source", ["Source", "Count", "Amount"],
+                         [[c["name"], c["count"], c["amount"]] for c in bd["by_source"]]))
+    return sections

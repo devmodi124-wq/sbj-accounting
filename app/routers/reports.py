@@ -27,33 +27,30 @@ def _range_dates(range_: Optional[str], date_from: Optional[date], date_to: Opti
     return resolve_range(range_)
 
 
-def _csv(name: str, rows: list[dict]) -> Response:
-    body = reports.to_csv(rows, reports.CSV_COLUMNS[name])
-    return Response(
-        content=body,
-        media_type="text/csv",
-        headers={"Content-Disposition": f'attachment; filename="{name}.csv"'},
-    )
-
-
-def _xlsx(name: str, rows: list[dict], thumbnails: dict | None = None) -> Response:
-    body = report_export.build_xlsx(name.title(), reports.CSV_COLUMNS[name], rows, thumbnails)
-    return Response(
-        content=body,
-        media_type=XLSX_MIME,
-        headers={"Content-Disposition": f'attachment; filename="{name}.xlsx"'},
-    )
-
-
-def _export(name: str, fmt: str, rows: list[dict], db: Session | None = None,
+def _export(name: str, fmt: str, data: dict, db: Session | None = None,
             with_thumbnails: bool = False) -> Response:
-    """Render ``rows`` as CSV or XLSX. XLSX optionally embeds product thumbnails."""
+    """Render a report ``data`` as CSV or XLSX, with a trailing TOTAL row (and the
+    sales category/source breakdown). XLSX optionally embeds product thumbnails."""
+    rows = data["rows"]
+    columns = reports.CSV_COLUMNS[name]
+    total_row = reports.totals_row(name, rows)
+    sections = reports.breakdown_sections(data) if name == "sales" else None
+
     if fmt == "csv":
-        return _csv(name, rows)
-    thumbnails = None
-    if with_thumbnails and db is not None:
-        thumbnails = reports.first_images(db, [r["id"] for r in rows if r.get("id")])
-    return _xlsx(name, rows, thumbnails)
+        body = reports.to_csv(rows, columns, total_row=total_row, sections=sections)
+        media_type, ext = "text/csv", "csv"
+    else:
+        thumbnails = None
+        if with_thumbnails and db is not None:
+            thumbnails = reports.first_images(db, [r["id"] for r in rows if r.get("id")])
+        body = report_export.build_xlsx(
+            name.title(), columns, rows, thumbnails, total_row=total_row, sections=sections)
+        media_type, ext = XLSX_MIME, "xlsx"
+    return Response(
+        content=body,
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="{name}.{ext}"'},
+    )
 
 
 def _is_file(fmt) -> bool:
@@ -86,7 +83,7 @@ def sales(
         limit=(100000 if _is_file(format) else limit), offset=offset,
     )
     if _is_file(format):
-        return _export("sales", format, data["rows"], db, with_thumbnails=True)
+        return _export("sales", format, data, db, with_thumbnails=True)
     return data
 
 
@@ -112,7 +109,7 @@ def stock(
         limit=(100000 if _is_file(format) else limit), offset=offset,
     )
     if _is_file(format):
-        return _export("stock", format, data["rows"], db, with_thumbnails=True)
+        return _export("stock", format, data, db, with_thumbnails=True)
     return data
 
 
@@ -132,7 +129,7 @@ def debtors(
         db, search=search, ageing=ageing, sort=sort, direction=direction,
         limit=(100000 if _is_file(format) else limit), offset=offset,
     )
-    return _export("debtors", format, data["rows"]) if _is_file(format) else data
+    return _export("debtors", format, data) if _is_file(format) else data
 
 
 @router.get("/creditors")
@@ -151,7 +148,7 @@ def creditors(
         db, search=search, ageing=ageing, sort=sort, direction=direction,
         limit=(100000 if _is_file(format) else limit), offset=offset,
     )
-    return _export("creditors", format, data["rows"]) if _is_file(format) else data
+    return _export("creditors", format, data) if _is_file(format) else data
 
 
 @router.get("/purchases")
@@ -174,7 +171,7 @@ def purchases(
         db, date_from=date_from, date_to=date_to, party_id=party_id, status=status,
         sort=sort, direction=direction, limit=(100000 if _is_file(format) else limit), offset=offset,
     )
-    return _export("purchases", format, data["rows"]) if _is_file(format) else data
+    return _export("purchases", format, data) if _is_file(format) else data
 
 
 @router.get("/customers")
@@ -196,4 +193,4 @@ def customers(
         db, search=search, date_from=date_from, date_to=date_to, sort=sort, direction=direction,
         limit=(100000 if _is_file(format) else limit), offset=offset,
     )
-    return _export("customers", format, data["rows"]) if _is_file(format) else data
+    return _export("customers", format, data) if _is_file(format) else data

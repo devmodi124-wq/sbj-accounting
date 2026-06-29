@@ -187,3 +187,44 @@ def test_ledger_csv(admin_client):
     r = admin_client.get(f"/api/ledgers/customer/{cid}", params={"format": "csv"})
     assert r.status_code == 200
     assert r.text.splitlines()[0] == "Date,Particulars,Debit,Credit,Balance"
+
+
+# ===== Export totals + sales breakdown =====
+
+def test_sales_csv_has_total_and_breakdown(admin_client):
+    cats = admin_client.get("/api/item-categories").json()
+    ring, neck = cats[0]["id"], cats[1]["id"]
+    admin_client.post("/api/orders", json={"customer_name": "A", "order_date": TODAY_S,
+        "payments": [{"mode": "upi", "amount": "400"}],
+        "items": [{"item_category_id": ring, "gross_weight": "1000", "metal_rate": "1"}]})   # 1000
+    admin_client.post("/api/orders", json={"customer_name": "B", "order_date": TODAY_S, "payments": [],
+        "items": [{"item_category_id": neck, "gross_weight": "2000", "metal_rate": "1"}]})    # 2000
+    text = admin_client.get("/api/reports/sales", params={"format": "csv"}).text
+    total = [ln for ln in text.splitlines() if ln.startswith("TOTAL")]
+    assert total and "3000.00" in total[0]      # 1000 + 2000
+    assert "Sales by category" in text
+    assert "Sales by source" in text
+
+
+def test_purchases_csv_has_total(admin_client):
+    admin_client.post("/api/purchases", json={"purchase_date": TODAY_S, "party_name": "S1",
+        "amount": "5000", "amount_paid": "1000"})
+    admin_client.post("/api/purchases", json={"purchase_date": TODAY_S, "party_name": "S2",
+        "amount": "3000", "amount_paid": "3000"})
+    text = admin_client.get("/api/reports/purchases", params={"format": "csv"}).text
+    total = [ln for ln in text.splitlines() if ln.startswith("TOTAL")]
+    assert total and "8000.00" in total[0]      # 5000 + 3000
+
+
+def test_sales_xlsx_has_total_row(admin_client):
+    import io as _io
+    from openpyxl import load_workbook
+    cat = admin_client.get("/api/item-categories").json()[0]["id"]
+    admin_client.post("/api/orders", json={"customer_name": "X", "order_date": TODAY_S, "payments": [],
+        "items": [{"item_category_id": cat, "gross_weight": "10", "metal_rate": "100"}]})
+    r = admin_client.get("/api/reports/sales", params={"format": "xlsx"})
+    assert r.status_code == 200
+    wb = load_workbook(_io.BytesIO(r.content))
+    vals = [c.value for row in wb.active.iter_rows() for c in row]
+    assert "TOTAL" in vals
+    assert "Sales by category" in vals

@@ -19,6 +19,8 @@ except Exception:  # pragma: no cover - Pillow is a declared dependency
 
 HEADER_FILL = PatternFill("solid", fgColor="1C1B19")
 HEADER_FONT = Font(color="FBF8F2", bold=True)
+TOTAL_FILL = PatternFill("solid", fgColor="F4EFE5")
+BOLD = Font(bold=True)
 THUMB_BOX = (72, 72)
 
 
@@ -45,9 +47,14 @@ def build_xlsx(
     columns: list[tuple[str, str]],
     rows: list[dict],
     thumbnails: dict | None = None,
+    total_row: dict | None = None,
+    sections: list | None = None,
 ) -> bytes:
     """Serialize ``rows`` to an .xlsx. ``columns`` is (key, header); ``thumbnails``
-    maps a row's ``id`` to raw image bytes (adds a trailing Picture column)."""
+    maps a row's ``id`` to raw image bytes (adds a trailing Picture column).
+
+    A bold TOTAL row is appended when ``total_row`` is given, followed by any
+    extra ``sections`` (each ``(title, headers, rows)`` — the sales breakdown)."""
     wb = Workbook()
     ws = wb.active
     ws.title = (title or "Report")[:31]
@@ -80,6 +87,28 @@ def build_xlsx(
                     )
                 except Exception:
                     pass
+
+    next_row = len(rows) + 2
+    if total_row:
+        for col, (key, _) in enumerate(columns, start=1):
+            cell = ws.cell(row=next_row, column=col, value=total_row.get(key, ""))
+            cell.font = BOLD
+            cell.fill = TOTAL_FILL
+        next_row += 1
+
+    for sec_title, sec_headers, sec_rows in (sections or []):
+        next_row += 1  # blank gap
+        ws.cell(row=next_row, column=1, value=sec_title).font = BOLD
+        next_row += 1
+        for col, header in enumerate(sec_headers, start=1):
+            cell = ws.cell(row=next_row, column=col, value=header)
+            cell.fill = HEADER_FILL
+            cell.font = HEADER_FONT
+        next_row += 1
+        for sr in sec_rows:
+            for col, value in enumerate(sr, start=1):
+                ws.cell(row=next_row, column=col, value=value)
+            next_row += 1
 
     out = BytesIO()
     wb.save(out)
