@@ -82,6 +82,7 @@ Single concurrent user, two roles (**Admin** / **Employee**), encrypted-at-rest 
 
 - **Downloadable Excel template** with an Instructions sheet and data-validation dropdowns.
 - **Bulk import** — Customers, Parties, Opening Balances, Orders, Cash Entries, Purchases.
+- **Multi-item orders** — Orders rows sharing the same `order_ref` collapse into one order with multiple pieces; the first row carries the order-level fields, each row is a piece. Blank `order_ref` = single-item order.
 - **Pictures via ZIP bundle** — list filenames in the `images` column, ZIP the workbook with an `images/` folder, upload the `.zip` (the endpoint auto-detects `.xlsx` vs `.zip`).
 - **Validate-before-commit** — every error reported (with sheet + row) before anything is saved; commit is a single all-or-nothing transaction.
 - **Name matching** reuses the same case-insensitive/trimmed logic as manual entry (no duplicates).

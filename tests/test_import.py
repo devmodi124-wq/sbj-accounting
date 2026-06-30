@@ -107,6 +107,34 @@ def test_commit_imports_everything(admin_client):
     assert led["entries"][0]["particulars"] == "Opening balance"
 
 
+def test_commit_groups_multi_item_order(admin_client):
+    # Two rows sharing order_ref MULTI collapse into one order with two pieces;
+    # order-level fields live on the first row only, totals sum both subtotals.
+    data = {
+        "Orders": [
+            {"order_ref": "MULTI", "customer_name": "Multi Cust", "order_date": "2026-06-01",
+             "item_category": "Ring", "item_name": "Ring A", "gross_weight": "100",
+             "metal_rate": "1", "status": "delivered", "payment_received": "120",
+             "payment_mode": "cash"},
+            {"order_ref": "MULTI", "item_category": "Ring", "item_name": "Ring B",
+             "gross_weight": "50", "metal_rate": "1"},
+        ],
+    }
+    r = _upload(admin_client, "/api/import/commit", make_xlsx(data))
+    assert r.status_code == 200
+    assert r.json()["imported"]["orders"] == 1
+
+    orders = admin_client.get("/api/orders").json()
+    assert len(orders) == 1
+    # 100×1 + 50×1 = 150 total; balance 150 − 120.
+    assert orders[0]["total_amount"] == "150.00"
+    assert orders[0]["balance"] == "30.00"
+
+    detail = admin_client.get(f"/api/orders/{orders[0]['id']}").json()
+    names = [it["item_name"] for it in detail["items"]]
+    assert names == ["Ring A", "Ring B"]
+
+
 def test_commit_rejected_when_invalid(admin_client):
     bad = {"Orders": [{"order_ref": "O1", "customer_name": "", "order_date": "x", "item_name": ""}]}
     r = _upload(admin_client, "/api/import/commit", make_xlsx(bad))

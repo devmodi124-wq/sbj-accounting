@@ -94,6 +94,22 @@ def _img_key(name: str) -> str:
     return name.rsplit("/", 1)[-1].rsplit("\\", 1)[-1].strip().lower()
 
 
+def _group_orders(rows: list[dict]) -> list[list[dict]]:
+    """Collapse Orders rows into per-order groups.
+
+    Consecutive rows sharing a non-blank ``order_ref`` form one multi-piece order;
+    a blank ``order_ref`` is always a standalone one-piece order.
+    """
+    groups: list[list[dict]] = []
+    for row in rows:
+        ref = _s(row.get("order_ref"))
+        if ref and groups and _s(groups[-1][0].get("order_ref")) == ref:
+            groups[-1].append(row)
+        else:
+            groups.append([row])
+    return groups
+
+
 def _image_names(value) -> list[str]:
     """Parse the Orders 'images' cell into filenames (separated by ; or ,)."""
     return [p.strip() for p in _s(value).replace(",", ";").split(";") if p.strip()]
@@ -163,9 +179,30 @@ def validate(session: Session, sheets: dict[str, list[dict]], images: dict | Non
             if not _s(row.get("name")):
                 err(label, i, "name is required")
 
+    # Rows sharing a non-blank order_ref collapse into one multi-piece order; the
+    # group's first row carries the order-level fields, continuation rows only the
+    # per-piece fields. A blank order_ref is always a standalone one-piece order.
+    prev_ref = None
     for i, row in enumerate(sheets.get("Orders", []), start=2):
-        if not _s(row.get("customer_name")):
-            err("Orders", i, "customer_name is required")
+        ref = _s(row.get("order_ref"))
+        is_first = not (ref and ref == prev_ref)
+        prev_ref = ref or None
+        if is_first:
+            if not _s(row.get("customer_name")):
+                err("Orders", i, "customer_name is required")
+            if _parse_date(row.get("order_date")) is None:
+                err("Orders", i, "order_date missing or not YYYY-MM-DD")
+            src = _s(row.get("source")).lower()
+            if src and src not in order_sources:
+                err("Orders", i, f"unknown source '{row.get('source')}'")
+            status = _s(row.get("status")).lower() or "pending"
+            if status not in VALID_STATUS:
+                err("Orders", i, f"invalid status '{status}'")
+            mode = _s(row.get("payment_mode")).lower()
+            if mode and mode not in VALID_PAYMENT:
+                err("Orders", i, f"invalid payment_mode '{mode}'")
+            if _parse_decimal(row.get("payment_received")) is None:
+                err("Orders", i, "payment_received is not a number")
         category = _s(row.get("item_category")).lower()
         if not category:
             err("Orders", i, "item_category is required")
@@ -180,17 +217,6 @@ def validate(session: Session, sheets: dict[str, list[dict]], images: dict | Non
         purity = _s(row.get("purity")).lower()
         if purity and purity not in purities:
             err("Orders", i, f"unknown purity '{row.get('purity')}'")
-        src = _s(row.get("source")).lower()
-        if src and src not in order_sources:
-            err("Orders", i, f"unknown source '{row.get('source')}'")
-        if _parse_date(row.get("order_date")) is None:
-            err("Orders", i, "order_date missing or not YYYY-MM-DD")
-        status = _s(row.get("status")).lower() or "pending"
-        if status not in VALID_STATUS:
-            err("Orders", i, f"invalid status '{status}'")
-        mode = _s(row.get("payment_mode")).lower()
-        if mode and mode not in VALID_PAYMENT:
-            err("Orders", i, f"invalid payment_mode '{mode}'")
         names = _image_names(row.get("images"))
         if len(names) > MAX_IMAGES_PER_ITEM:
             err("Orders", i, f"too many images ({len(names)} > {MAX_IMAGES_PER_ITEM})")
@@ -199,7 +225,7 @@ def validate(session: Session, sheets: dict[str, list[dict]], images: dict | Non
                 err("Orders", i, f"'{fname}' is not an image file (png/jpg/jpeg/webp/gif)")
             elif _img_key(fname) not in available:
                 err("Orders", i, f"image '{fname}' not found in the uploaded .zip")
-        for fld in ("payment_received",) + _WEIGHT_FIELDS + _RATE_FIELDS:
+        for fld in _WEIGHT_FIELDS + _RATE_FIELDS:
             if _parse_decimal(row.get(fld)) is None:
                 err("Orders", i, f"{fld} is not a number")
 
@@ -269,25 +295,25 @@ def commit(session: Session, user: User, sheets: dict[str, list[dict]],
                 party.notes = _s(row.get("notes")) or None
                 counts["parties"] += 1
 
-        # Each imported order becomes a single piece (item) priced from its
-        # weights×rates. A single payment line is recorded from amount + mode.
-        for row in sheets.get("Orders", []):
-            customer, _ = get_or_create_customer(session, _s(row.get("customer_name")), created_by=user.id)
-            order_date = _parse_date(row.get("order_date"))
-            wt = _s(row.get("weight_type")).lower()
-            ss = _s(row.get("supply_source")).lower()
-            pu = _s(row.get("purity")).lower()
-            src = _s(row.get("source")).lower()
-            mode = _s(row.get("payment_mode")).lower()
-            received = _parse_decimal(row.get("payment_received")) or Decimal("0")
+        # Rows sharing a non-blank order_ref collapse into one multi-piece order;
+        # the group's first row carries the order-level fields, each row contributes
+        # one piece priced from its weights×rates. A single payment line is recorded
+        # from the head row's amount + mode.
+        for group in _group_orders(sheets.get("Orders", [])):
+            head = group[0]
+            customer, _ = get_or_create_customer(session, _s(head.get("customer_name")), created_by=user.id)
+            order_date = _parse_date(head.get("order_date"))
+            src = _s(head.get("source")).lower()
+            mode = _s(head.get("payment_mode")).lower()
+            received = _parse_decimal(head.get("payment_received")) or Decimal("0")
             order = Order(
                 customer_id=customer.id,
                 order_date=order_date,
-                order_code=_s(row.get("order_code")) or None,
-                notes=_s(row.get("notes")) or None,
-                reference=_s(row.get("reference")) or None,
+                order_code=_s(head.get("order_code")) or None,
+                notes=_s(head.get("notes")) or None,
+                reference=_s(head.get("reference")) or None,
                 source_id=source_by_name[src].id if src else None,
-                status=OrderStatus(_s(row.get("status")).lower() or "pending"),
+                status=OrderStatus(_s(head.get("status")).lower() or "pending"),
                 payment_received=received,
                 payment_mode=PaymentMode(mode) if mode else None,
                 created_by=user.id,
@@ -297,48 +323,54 @@ def commit(session: Session, user: User, sheets: dict[str, list[dict]],
             )
             session.add(order)
             session.flush()
-            piece = OrderItem(
-                order_id=order.id,
-                item_category_id=category_by_name[_s(row.get("item_category")).lower()].id,
-                item_name=_s(row.get("item_name")) or None,
-                weight_type_id=weight_by_name[wt].id if wt else None,
-                supply_source_id=supply_by_name[ss].id if ss else None,
-                purity_type_id=purity_by_name[pu].id if pu else None,
-                gross_weight=_parse_decimal(row.get("gross_weight")) or None,
-                stone_weight=_parse_decimal(row.get("stone_weight")) or None,
-                others_weight=_parse_decimal(row.get("others_weight")) or None,
-                metal_rate=_parse_decimal(row.get("metal_rate")) or None,
-                stone_rate=_parse_decimal(row.get("stone_rate")) or None,
-                others_rate=_parse_decimal(row.get("others_rate")) or None,
-                labour_rate=_parse_decimal(row.get("labour_rate")) or None,
-                sort_order=0,
-            )
-            # The single diamond_weight/diamond_rate import columns become one
-            # diamond line of the legacy "Other fancy" type (re-typeable in the app).
-            dia_ct = _parse_decimal(row.get("diamond_weight")) or Decimal("0")
-            if dia_ct > 0:
-                piece.diamonds.append(OrderItemDiamond(
-                    diamond_type_id=legacy_diamond.id if legacy_diamond else None,
-                    carats=dia_ct, rate=_parse_decimal(row.get("diamond_rate")) or None,
-                    sort_order=0,
-                ))
-            net = compute_net_weight(piece)
-            piece.net_weight = net
-            piece.subtotal = compute_subtotal(piece, net)
-            session.add(piece)
-            session.flush()  # need piece.id to attach its pictures
-            for idx, fname in enumerate(_image_names(row.get("images"))):
-                blob = images.get(_img_key(fname))
-                if blob is None:
-                    continue
-                session.add(OrderImage(
-                    order_item_id=piece.id,
-                    filename=fname.rsplit("/", 1)[-1].rsplit("\\", 1)[-1],
-                    mime=_guess_mime(fname),
-                    data=blob,
-                    sort_order=idx,
-                ))
-                counts["images"] += 1
+            total = Decimal("0")
+            for sort_order, row in enumerate(group):
+                wt = _s(row.get("weight_type")).lower()
+                ss = _s(row.get("supply_source")).lower()
+                pu = _s(row.get("purity")).lower()
+                piece = OrderItem(
+                    order_id=order.id,
+                    item_category_id=category_by_name[_s(row.get("item_category")).lower()].id,
+                    item_name=_s(row.get("item_name")) or None,
+                    weight_type_id=weight_by_name[wt].id if wt else None,
+                    supply_source_id=supply_by_name[ss].id if ss else None,
+                    purity_type_id=purity_by_name[pu].id if pu else None,
+                    gross_weight=_parse_decimal(row.get("gross_weight")) or None,
+                    stone_weight=_parse_decimal(row.get("stone_weight")) or None,
+                    others_weight=_parse_decimal(row.get("others_weight")) or None,
+                    metal_rate=_parse_decimal(row.get("metal_rate")) or None,
+                    stone_rate=_parse_decimal(row.get("stone_rate")) or None,
+                    others_rate=_parse_decimal(row.get("others_rate")) or None,
+                    labour_rate=_parse_decimal(row.get("labour_rate")) or None,
+                    sort_order=sort_order,
+                )
+                # The single diamond_weight/diamond_rate import columns become one
+                # diamond line of the legacy "Other fancy" type (re-typeable in the app).
+                dia_ct = _parse_decimal(row.get("diamond_weight")) or Decimal("0")
+                if dia_ct > 0:
+                    piece.diamonds.append(OrderItemDiamond(
+                        diamond_type_id=legacy_diamond.id if legacy_diamond else None,
+                        carats=dia_ct, rate=_parse_decimal(row.get("diamond_rate")) or None,
+                        sort_order=0,
+                    ))
+                net = compute_net_weight(piece)
+                piece.net_weight = net
+                piece.subtotal = compute_subtotal(piece, net)
+                session.add(piece)
+                session.flush()  # need piece.id to attach its pictures
+                for idx, fname in enumerate(_image_names(row.get("images"))):
+                    blob = images.get(_img_key(fname))
+                    if blob is None:
+                        continue
+                    session.add(OrderImage(
+                        order_item_id=piece.id,
+                        filename=fname.rsplit("/", 1)[-1].rsplit("\\", 1)[-1],
+                        mime=_guess_mime(fname),
+                        data=blob,
+                        sort_order=idx,
+                    ))
+                    counts["images"] += 1
+                total += piece.subtotal
             if received > 0:
                 session.add(OrderPayment(
                     order_id=order.id,
@@ -346,8 +378,8 @@ def commit(session: Session, user: User, sheets: dict[str, list[dict]],
                     amount=received,
                     sort_order=0,
                 ))
-            order.total_amount = piece.subtotal
-            order.balance = piece.subtotal - received
+            order.total_amount = total
+            order.balance = total - received
             counts["orders"] += 1
 
         for row in sheets.get("Cash Entries", []):
