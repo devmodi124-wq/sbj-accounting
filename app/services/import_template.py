@@ -9,6 +9,7 @@ from openpyxl.worksheet.datavalidation import DataValidation
 from sqlalchemy.orm import Session
 
 from app.models import (
+    DiamondType,
     ItemCategory,
     OrderSource,
     PurityType,
@@ -23,10 +24,11 @@ SHEETS = {
     "Customers": ["name", "phone", "address", "notes"],
     "Parties": ["name", "phone", "address", "notes"],
     "Opening Balances": ["entity_type", "entity_name", "as_of_date", "amount", "direction"],
-    "Orders": ["order_ref", "customer_name", "order_date", "item_category", "item_name",
+    "Orders": ["order_ref", "item_ref", "customer_name", "order_date", "item_category", "item_name",
                "weight_type", "supply_source", "purity", "source", "reference",
-               "gross_weight", "diamond_weight", "diamond_rate", "stone_weight", "stone_rate",
-               "others_weight", "others_rate", "metal_rate", "labour_rate",
+               "gross_weight", "diamond_type", "diamond_weight", "diamond_rate",
+               "stone_weight", "stone_rate", "others_weight", "others_rate",
+               "metal_rate", "labour_rate",
                "order_code", "status", "payment_received", "payment_mode", "notes", "images"],
     "Cash Entries": ["date", "person_name", "details", "type", "amount"],
     "Purchases": ["date", "party_name", "details", "entry_notes", "amount", "amount_paid"],
@@ -52,8 +54,13 @@ INSTRUCTIONS = [
     "  (5 ct = 1 g). Net (metal) weight = gross − (diamond+stone+others)/5. Price =",
     "  net×metal_rate + diamond_ct×diamond_rate + stone_ct×stone_rate + others_ct×others_rate",
     "  + net×labour_rate. Leave rates blank for parts you don't use.",
-    "  diamond_weight/diamond_rate import as one diamond line typed 'Diamond (Other",
-    "  fancy)'; re-type it (or add more diamond lines) in the app after importing.",
+    "  Diamonds: set 'diamond_type' (dropdown) + diamond_weight (carats) + diamond_rate.",
+    "  Several diamond types on ONE piece: give those rows the same 'item_ref' (and the",
+    "  same order_ref) on CONSECUTIVE rows — the first row carries the piece columns",
+    "  (item_category, gross_weight, rates…), each row adds one diamond line. Leave",
+    "  'item_ref' blank when a piece has at most one diamond type.",
+    "  Leaving diamond_type blank with a diamond_weight imports it as 'Diamond (Other",
+    "  fancy)'; re-type it in the app afterwards.",
     "  status = pending or delivered. payment_mode = cash/upi/bank_transfer/old_gold_exchange/other.",
     "  An order's total is the sum of its item subtotals; payment_received applies once per order.",
     "Pictures (optional): list filenames in the 'images' column, separated by ; (e.g.",
@@ -87,6 +94,7 @@ def build_template(session: Session) -> bytes:
     weights = [w.name for w in session.query(WeightType).filter_by(is_active=True).all()]
     supplies = [s.name for s in session.query(SupplySource).filter_by(is_active=True).all()]
     sources = [s.name for s in session.query(OrderSource).filter_by(is_active=True).all()]
+    diamonds = [d.name for d in session.query(DiamondType).filter_by(is_active=True).all()]
 
     wb = Workbook()
     # Instructions sheet first.
@@ -108,17 +116,19 @@ def build_template(session: Session) -> bytes:
             dv.add(f"{col_letter}2:{col_letter}1000")
 
         if title == "Orders":
-            # Columns: A ref, B customer, C date, D category, E item_name, F weight_type,
-            #          G supply, H purity, I source, J reference, K gross_wt, L dia_wt,
-            #          M dia_rate, N stone_wt, O stone_rate, P others_wt, Q others_rate,
-            #          R metal_rate, S labour_rate, T code, U status, V received, W mode, X notes
-            add_dv(categories, "D")
-            add_dv(weights, "F")
-            add_dv(supplies, "G")
-            add_dv(purities, "H")
-            add_dv(sources, "I")
-            add_dv(["pending", "delivered"], "U")
-            add_dv(["cash", "upi", "bank_transfer", "old_gold_exchange", "other"], "W")
+            # Columns: A order_ref, B item_ref, C customer, D date, E category, F item_name,
+            #          G weight_type, H supply, I purity, J source, K reference, L gross_wt,
+            #          M dia_type, N dia_wt, O dia_rate, P stone_wt, Q stone_rate,
+            #          R others_wt, S others_rate, T metal_rate, U labour_rate, V code,
+            #          W status, X received, Y mode, Z notes, AA images
+            add_dv(categories, "E")
+            add_dv(weights, "G")
+            add_dv(supplies, "H")
+            add_dv(purities, "I")
+            add_dv(sources, "J")
+            add_dv(diamonds, "M")
+            add_dv(["pending", "delivered"], "W")
+            add_dv(["cash", "upi", "bank_transfer", "old_gold_exchange", "other"], "Y")
         elif title == "Cash Entries":
             add_dv(["received", "paid"], "D")
         elif title == "Opening Balances":

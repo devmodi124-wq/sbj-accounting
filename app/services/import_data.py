@@ -50,7 +50,7 @@ from app.services.matching import (
 )
 from app.services.orders import compute_net_weight, compute_subtotal
 
-# Per-item weight/rate columns on the Orders sheet (carried onto the single piece).
+# Numeric weight/rate columns on the Orders sheet (checked on every row).
 _WEIGHT_FIELDS = ("gross_weight", "diamond_weight", "stone_weight", "others_weight")
 _RATE_FIELDS = ("metal_rate", "diamond_rate", "stone_rate", "others_rate", "labour_rate")
 
@@ -94,19 +94,26 @@ def _img_key(name: str) -> str:
     return name.rsplit("/", 1)[-1].rsplit("\\", 1)[-1].strip().lower()
 
 
-def _group_orders(rows: list[dict]) -> list[list[dict]]:
-    """Collapse Orders rows into per-order groups.
+def _pair_row(entry):
+    """Row-dict accessor for grouping ``(row_number, row)`` pairs."""
+    return entry[1]
 
-    Consecutive rows sharing a non-blank ``order_ref`` form one multi-piece order;
-    a blank ``order_ref`` is always a standalone one-piece order.
+
+def _group_consecutive(entries: list, key: str, get=lambda r: r) -> list[list]:
+    """Group consecutive entries sharing a non-blank value for ``key``.
+
+    Used twice on the Orders sheet: ``order_ref`` collapses rows into one
+    multi-piece order, then ``item_ref`` collapses an order's rows into one piece
+    carrying several typed diamond lines. A blank key always starts a new group,
+    so unreferenced rows stay standalone (the pre-grouping behaviour).
     """
-    groups: list[list[dict]] = []
-    for row in rows:
-        ref = _s(row.get("order_ref"))
-        if ref and groups and _s(groups[-1][0].get("order_ref")) == ref:
-            groups[-1].append(row)
+    groups: list[list] = []
+    for entry in entries:
+        val = _s(get(entry).get(key))
+        if val and groups and _s(get(groups[-1][0]).get(key)) == val:
+            groups[-1].append(entry)
         else:
-            groups.append([row])
+            groups.append([entry])
     return groups
 
 
@@ -173,61 +180,72 @@ def validate(session: Session, sheets: dict[str, list[dict]], images: dict | Non
     weight_types = {w.name.strip().lower() for w in session.query(WeightType).all()}
     supply_sources = {s.name.strip().lower() for s in session.query(SupplySource).all()}
     order_sources = {s.name.strip().lower() for s in session.query(OrderSource).all()}
+    diamond_types = {d.name.strip().lower() for d in session.query(DiamondType).all()}
 
     for label in ("Customers", "Parties"):
         for i, row in enumerate(sheets.get(label, []), start=2):
             if not _s(row.get("name")):
                 err(label, i, "name is required")
 
-    # Rows sharing a non-blank order_ref collapse into one multi-piece order; the
-    # group's first row carries the order-level fields, continuation rows only the
-    # per-piece fields. A blank order_ref is always a standalone one-piece order.
-    prev_ref = None
-    for i, row in enumerate(sheets.get("Orders", []), start=2):
-        ref = _s(row.get("order_ref"))
-        is_first = not (ref and ref == prev_ref)
-        prev_ref = ref or None
-        if is_first:
-            if not _s(row.get("customer_name")):
-                err("Orders", i, "customer_name is required")
-            if _parse_date(row.get("order_date")) is None:
-                err("Orders", i, "order_date missing or not YYYY-MM-DD")
-            src = _s(row.get("source")).lower()
-            if src and src not in order_sources:
-                err("Orders", i, f"unknown source '{row.get('source')}'")
-            status = _s(row.get("status")).lower() or "pending"
-            if status not in VALID_STATUS:
-                err("Orders", i, f"invalid status '{status}'")
-            mode = _s(row.get("payment_mode")).lower()
-            if mode and mode not in VALID_PAYMENT:
-                err("Orders", i, f"invalid payment_mode '{mode}'")
-            if _parse_decimal(row.get("payment_received")) is None:
-                err("Orders", i, "payment_received is not a number")
-        category = _s(row.get("item_category")).lower()
-        if not category:
-            err("Orders", i, "item_category is required")
-        elif category not in categories:
-            err("Orders", i, f"unknown item_category '{row.get('item_category')}'")
-        wt = _s(row.get("weight_type")).lower()
-        if wt and wt not in weight_types:
-            err("Orders", i, f"unknown weight_type '{row.get('weight_type')}'")
-        ss = _s(row.get("supply_source")).lower()
-        if ss and ss not in supply_sources:
-            err("Orders", i, f"unknown supply_source '{row.get('supply_source')}'")
-        purity = _s(row.get("purity")).lower()
-        if purity and purity not in purities:
-            err("Orders", i, f"unknown purity '{row.get('purity')}'")
-        names = _image_names(row.get("images"))
-        if len(names) > MAX_IMAGES_PER_ITEM:
-            err("Orders", i, f"too many images ({len(names)} > {MAX_IMAGES_PER_ITEM})")
-        for fname in names:
-            if not fname.lower().endswith(_IMAGE_EXTS):
-                err("Orders", i, f"'{fname}' is not an image file (png/jpg/jpeg/webp/gif)")
-            elif _img_key(fname) not in available:
-                err("Orders", i, f"image '{fname}' not found in the uploaded .zip")
-        for fld in _WEIGHT_FIELDS + _RATE_FIELDS:
-            if _parse_decimal(row.get(fld)) is None:
-                err("Orders", i, f"{fld} is not a number")
+    # Orders rows nest twice: order_ref groups rows into one multi-piece order, then
+    # item_ref groups an order's rows into one piece with several typed diamond lines.
+    # The head row of each group carries that level's fields; the rest are continuations.
+    order_rows = list(enumerate(sheets.get("Orders", []), start=2))
+    for ogroup in _group_consecutive(order_rows, "order_ref", _pair_row):
+        i, head = ogroup[0]
+        if not _s(head.get("customer_name")):
+            err("Orders", i, "customer_name is required")
+        if _parse_date(head.get("order_date")) is None:
+            err("Orders", i, "order_date missing or not YYYY-MM-DD")
+        src = _s(head.get("source")).lower()
+        if src and src not in order_sources:
+            err("Orders", i, f"unknown source '{head.get('source')}'")
+        status = _s(head.get("status")).lower() or "pending"
+        if status not in VALID_STATUS:
+            err("Orders", i, f"invalid status '{status}'")
+        mode = _s(head.get("payment_mode")).lower()
+        if mode and mode not in VALID_PAYMENT:
+            err("Orders", i, f"invalid payment_mode '{mode}'")
+        if _parse_decimal(head.get("payment_received")) is None:
+            err("Orders", i, "payment_received is not a number")
+
+        for igroup in _group_consecutive(ogroup, "item_ref", _pair_row):
+            pi, prow = igroup[0]
+            category = _s(prow.get("item_category")).lower()
+            if not category:
+                err("Orders", pi, "item_category is required")
+            elif category not in categories:
+                err("Orders", pi, f"unknown item_category '{prow.get('item_category')}'")
+            wt = _s(prow.get("weight_type")).lower()
+            if wt and wt not in weight_types:
+                err("Orders", pi, f"unknown weight_type '{prow.get('weight_type')}'")
+            ss = _s(prow.get("supply_source")).lower()
+            if ss and ss not in supply_sources:
+                err("Orders", pi, f"unknown supply_source '{prow.get('supply_source')}'")
+            purity = _s(prow.get("purity")).lower()
+            if purity and purity not in purities:
+                err("Orders", pi, f"unknown purity '{prow.get('purity')}'")
+            # A piece's pictures may be listed on any of its rows; the cap is per piece.
+            piece_images: list[str] = []
+            for ri, row in igroup:
+                names = _image_names(row.get("images"))
+                for fname in names:
+                    if not fname.lower().endswith(_IMAGE_EXTS):
+                        err("Orders", ri, f"'{fname}' is not an image file (png/jpg/jpeg/webp/gif)")
+                    elif _img_key(fname) not in available:
+                        err("Orders", ri, f"image '{fname}' not found in the uploaded .zip")
+                piece_images.extend(names)
+            if len(piece_images) > MAX_IMAGES_PER_ITEM:
+                err("Orders", pi, f"too many images ({len(piece_images)} > {MAX_IMAGES_PER_ITEM})")
+
+        # Every row can carry its own diamond line + numeric weights/rates.
+        for ri, row in ogroup:
+            dt = _s(row.get("diamond_type")).lower()
+            if dt and dt not in diamond_types:
+                err("Orders", ri, f"unknown diamond_type '{row.get('diamond_type')}'")
+            for fld in _WEIGHT_FIELDS + _RATE_FIELDS:
+                if _parse_decimal(row.get(fld)) is None:
+                    err("Orders", ri, f"{fld} is not a number")
 
     for i, row in enumerate(sheets.get("Cash Entries", []), start=2):
         if _parse_date(row.get("date")) is None:
@@ -295,11 +313,11 @@ def commit(session: Session, user: User, sheets: dict[str, list[dict]],
                 party.notes = _s(row.get("notes")) or None
                 counts["parties"] += 1
 
-        # Rows sharing a non-blank order_ref collapse into one multi-piece order;
-        # the group's first row carries the order-level fields, each row contributes
-        # one piece priced from its weights×rates. A single payment line is recorded
-        # from the head row's amount + mode.
-        for group in _group_orders(sheets.get("Orders", [])):
+        # Orders rows nest twice: order_ref groups rows into one multi-piece order,
+        # then item_ref groups an order's rows into one piece carrying several typed
+        # diamond lines. Each group's head row holds that level's fields. A single
+        # payment line is recorded from the order head row's amount + mode.
+        for group in _group_consecutive(sheets.get("Orders", []), "order_ref"):
             head = group[0]
             customer, _ = get_or_create_customer(session, _s(head.get("customer_name")), created_by=user.id)
             order_date = _parse_date(head.get("order_date"))
@@ -324,41 +342,49 @@ def commit(session: Session, user: User, sheets: dict[str, list[dict]],
             session.add(order)
             session.flush()
             total = Decimal("0")
-            for sort_order, row in enumerate(group):
-                wt = _s(row.get("weight_type")).lower()
-                ss = _s(row.get("supply_source")).lower()
-                pu = _s(row.get("purity")).lower()
+            for sort_order, igroup in enumerate(_group_consecutive(group, "item_ref")):
+                prow = igroup[0]
+                wt = _s(prow.get("weight_type")).lower()
+                ss = _s(prow.get("supply_source")).lower()
+                pu = _s(prow.get("purity")).lower()
                 piece = OrderItem(
                     order_id=order.id,
-                    item_category_id=category_by_name[_s(row.get("item_category")).lower()].id,
-                    item_name=_s(row.get("item_name")) or None,
+                    item_category_id=category_by_name[_s(prow.get("item_category")).lower()].id,
+                    item_name=_s(prow.get("item_name")) or None,
                     weight_type_id=weight_by_name[wt].id if wt else None,
                     supply_source_id=supply_by_name[ss].id if ss else None,
                     purity_type_id=purity_by_name[pu].id if pu else None,
-                    gross_weight=_parse_decimal(row.get("gross_weight")) or None,
-                    stone_weight=_parse_decimal(row.get("stone_weight")) or None,
-                    others_weight=_parse_decimal(row.get("others_weight")) or None,
-                    metal_rate=_parse_decimal(row.get("metal_rate")) or None,
-                    stone_rate=_parse_decimal(row.get("stone_rate")) or None,
-                    others_rate=_parse_decimal(row.get("others_rate")) or None,
-                    labour_rate=_parse_decimal(row.get("labour_rate")) or None,
+                    gross_weight=_parse_decimal(prow.get("gross_weight")) or None,
+                    stone_weight=_parse_decimal(prow.get("stone_weight")) or None,
+                    others_weight=_parse_decimal(prow.get("others_weight")) or None,
+                    metal_rate=_parse_decimal(prow.get("metal_rate")) or None,
+                    stone_rate=_parse_decimal(prow.get("stone_rate")) or None,
+                    others_rate=_parse_decimal(prow.get("others_rate")) or None,
+                    labour_rate=_parse_decimal(prow.get("labour_rate")) or None,
                     sort_order=sort_order,
                 )
-                # The single diamond_weight/diamond_rate import columns become one
-                # diamond line of the legacy "Other fancy" type (re-typeable in the app).
-                dia_ct = _parse_decimal(row.get("diamond_weight")) or Decimal("0")
-                if dia_ct > 0:
+                # Each row of the piece adds one typed diamond line; a blank
+                # diamond_type falls back to the legacy "Other fancy" bucket.
+                for row in igroup:
+                    dia_ct = _parse_decimal(row.get("diamond_weight")) or Decimal("0")
+                    dia_rate = _parse_decimal(row.get("diamond_rate")) or Decimal("0")
+                    if dia_ct <= 0 and dia_rate <= 0:
+                        continue
+                    dt = _s(row.get("diamond_type")).lower()
+                    dtype = diamond_by_name[dt] if dt else legacy_diamond
                     piece.diamonds.append(OrderItemDiamond(
-                        diamond_type_id=legacy_diamond.id if legacy_diamond else None,
-                        carats=dia_ct, rate=_parse_decimal(row.get("diamond_rate")) or None,
-                        sort_order=0,
+                        diamond_type_id=dtype.id if dtype else None,
+                        carats=dia_ct, rate=dia_rate or None,
+                        sort_order=len(piece.diamonds),
                     ))
                 net = compute_net_weight(piece)
                 piece.net_weight = net
                 piece.subtotal = compute_subtotal(piece, net)
                 session.add(piece)
                 session.flush()  # need piece.id to attach its pictures
-                for idx, fname in enumerate(_image_names(row.get("images"))):
+                # A piece's pictures may be listed on any of its rows.
+                names = [n for row in igroup for n in _image_names(row.get("images"))]
+                for idx, fname in enumerate(names):
                     blob = images.get(_img_key(fname))
                     if blob is None:
                         continue

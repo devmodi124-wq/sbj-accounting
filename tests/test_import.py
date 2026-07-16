@@ -135,6 +135,59 @@ def test_commit_groups_multi_item_order(admin_client):
     assert names == ["Ring A", "Ring B"]
 
 
+def test_commit_groups_typed_diamond_lines(admin_client):
+    # Two rows sharing order_ref+item_ref = ONE piece with two typed diamond lines.
+    data = {
+        "Orders": [
+            {"order_ref": "D1", "item_ref": "A", "customer_name": "Dia Cust",
+             "order_date": "2026-06-01", "item_category": "Ring", "item_name": "Two-cut ring",
+             "gross_weight": "10", "metal_rate": "0",
+             "diamond_type": "Diamond (Chowki)", "diamond_weight": "2", "diamond_rate": "100"},
+            {"order_ref": "D1", "item_ref": "A",
+             "diamond_type": "Diamond (Princess)", "diamond_weight": "3", "diamond_rate": "200"},
+        ],
+    }
+    assert _upload(admin_client, "/api/import/validate", make_xlsx(data)).json()["ok"] is True
+    r = _upload(admin_client, "/api/import/commit", make_xlsx(data))
+    assert r.json()["imported"]["orders"] == 1
+
+    order = admin_client.get("/api/orders").json()[0]
+    detail = admin_client.get(f"/api/orders/{order['id']}").json()
+    assert len(detail["items"]) == 1               # one piece, not two
+    diamonds = detail["items"][0]["diamonds"]
+    assert len(diamonds) == 2
+    # Diamonds price as 2×100 + 3×200 = 800; metal_rate 0 so that is the whole total.
+    assert order["total_amount"] == "800.00"
+    # Net weight = gross 10 − (2+3)/5 = 9.
+    assert detail["items"][0]["net_weight"] == "9.000"
+
+
+def test_unknown_diamond_type_rejected(admin_client):
+    data = {"Orders": [{"order_ref": "D2", "customer_name": "Dia Cust", "order_date": "2026-06-01",
+                        "item_category": "Ring", "gross_weight": "10", "metal_rate": "1",
+                        "diamond_type": "Moon rock", "diamond_weight": "1", "diamond_rate": "10"}]}
+    body = _upload(admin_client, "/api/import/validate", make_xlsx(data)).json()
+    assert body["ok"] is False
+    assert any("unknown diamond_type 'Moon rock'" in e["message"] for e in body["errors"])
+
+
+def test_blank_diamond_type_falls_back_to_legacy_bucket(admin_client):
+    # Old sheets carry only diamond_weight/diamond_rate — still import, typed as legacy.
+    data = {"Orders": [{"order_ref": "D3", "customer_name": "Legacy Cust", "order_date": "2026-06-01",
+                        "item_category": "Ring", "gross_weight": "10", "metal_rate": "0",
+                        "diamond_weight": "2", "diamond_rate": "100"}]}
+    assert _upload(admin_client, "/api/import/validate", make_xlsx(data)).json()["ok"] is True
+    _upload(admin_client, "/api/import/commit", make_xlsx(data))
+
+    order = admin_client.get("/api/orders").json()[0]
+    detail = admin_client.get(f"/api/orders/{order['id']}").json()
+    diamonds = detail["items"][0]["diamonds"]
+    assert len(diamonds) == 1
+    types = admin_client.get("/api/diamond-types").json()
+    legacy = next(t for t in types if t["name"] == "Diamond (Other fancy)")
+    assert diamonds[0]["diamond_type_id"] == legacy["id"]
+
+
 def test_commit_rejected_when_invalid(admin_client):
     bad = {"Orders": [{"order_ref": "O1", "customer_name": "", "order_date": "x", "item_name": ""}]}
     r = _upload(admin_client, "/api/import/commit", make_xlsx(bad))
